@@ -1,0 +1,24 @@
+resources:
+  - name: appengine-flex-deployment
+    type: gcp-types/appengine-v1:apps.services.versions
+    properties:
+      id: rocket-networking
+      appsId: rocket-networking
+      servicesId: rocket-networking
+      split:
+        allocations:
+          v1: 1
+  - name: appengine-flex-version
+    type: gcp-types/appengine-v1:apps.services.versions
+    properties:
+      appsId: rocket-networking
+      servicesId: rocket-networking
+      id: v1
+      instanceClass: F2
+      manualScaling:
+        instances: 1
+      runtime: nodejs
+      env: flex
+      deployment:
+        files:
+          app.yaml: gs://rocket-networking.appspot.com/app.yaml

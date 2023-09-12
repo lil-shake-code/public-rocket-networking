@@ -30,9 +30,6 @@ firebase.initializeApp({
 // As an admin, the app has access to read and write all data, regardless of Security Rules
 var db = firebase.database();
 
-const accountSid = "AC11153027f99014c56cc85af03e57e84d";
-const authToken = "be087c9031bb9f992c921878d6afa216";
-const client = require("twilio")(accountSid, authToken);
 function sendSMS(body) {
   // if (os.hostname() == "ps3140w4x" || os.hostname() == "DESKTOP-HFR4M6G") {
   //   client.messages
@@ -996,6 +993,6 @@ wss.on("connection", (ws) => {
 });
 console.log("The WebSocket server is running");
 
-server.listen(3000, () => {
-  console.log("WebSocket server listening on port 3000");
+server.listen(process.env.PORT || 3000, () => {
+  console.log(`WebSocket server listening on port ${PORT} `);
 });
