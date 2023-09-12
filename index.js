@@ -994,5 +994,5 @@ wss.on("connection", (ws) => {
 console.log("The WebSocket server is running");
 
 server.listen(process.env.PORT || 3000, () => {
-  console.log(`WebSocket server listening on port ${PORT} `);
+  console.log(`WebSocket server listening on port ${process.env.PORT} `);
 });
