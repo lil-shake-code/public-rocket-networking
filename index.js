@@ -418,12 +418,21 @@ wss.on("connection", (ws) => {
                 ws
               );
             } else {
-              console.log("SERVER HAS REACHED MAX CAPACITY");
-              sendAlertToClient(
-                ws,
-                "show",
-                " You Server has reached maximum client capacity! Please upgrade your plan."
-              );
+              if (serverInfo.maxClients == 0) {
+                console.log("SERVER is not allowed to have players!");
+                sendAlertToClient(
+                  ws,
+                  "show",
+                  " Your free trial is over! Please support us by upgrading your plan."
+                );
+              } else {
+                console.log("SERVER HAS REACHED MAX CAPACITY");
+                sendAlertToClient(
+                  ws,
+                  "show",
+                  " You Server has reached maximum client capacity! Please upgrade your plan."
+                );
+              }
             }
           } else {
             console.log("creating new server on nodejs");
