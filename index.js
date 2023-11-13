@@ -30,18 +30,6 @@ firebase.initializeApp({
 // As an admin, the app has access to read and write all data, regardless of Security Rules
 var db = firebase.database();
 
-function sendSMS(body) {
-  // if (os.hostname() == "ps3140w4x" || os.hostname() == "DESKTOP-HFR4M6G") {
-  //   client.messages
-  //     .create({
-  //       body: JSON.stringify(body),
-  //       from: "whatsapp:+14155238886",
-  //       to: "whatsapp:+919845540067",
-  //     })
-  //     .then((message) => console.log(message.sid));
-  // }
-}
-
 /*
  * Takes in uuid and returns the JSON associated with it on firebase
  */
@@ -57,15 +45,13 @@ async function getServerInfo(uuid) {
     },
     (errorObject) => {
       console.log("The read failed: " + errorObject.name);
-      sendSMS("The read failed: " + errorObject.name);
     }
   );
-  //console.log(typeof finalValue.maxClients != "number")
   if (!finalValue) {
     finalValue = -1;
   }
   console.log("getserverinfo function has returned a value");
-  sendSMS("getserverinfo function has returned a value");
+
   return finalValue;
 }
 
@@ -90,20 +76,6 @@ function CleanRoomsAndClients() {
 }
 
 CleanRoomsAndClients();
-
-/*
- *   TIMED BROADCASTER
- */
-// function Broadcast() {
-//   for (var serverKey in servers) {
-//     for (var roomKey in servers[serverKey].rooms) {
-//       servers[serverKey].rooms[roomKey].broadcastToRoom();
-//     }
-//   }
-
-//   setTimeout(Broadcast, 1000 / 30);
-// }
-// Broadcast();
 
 /*
  * send an alert to client
@@ -297,34 +269,11 @@ class Room {
             );
           }
         }
-        // if (!this.clients[key].socket) {
-        //     delete this.clients[key];
-        // }
       }
     } catch (e) {
       console.log(e);
-      sendSMS(e);
     }
   }
-  // broadcastToRoom() {
-  //   for (var clientKeySending in this.clients) {
-  //     //get the string to send from the sender
-  //     var stringToSend = {
-  //       clientId: this.clients[clientKeySending].clientId, //the clientId
-  //       sharedProperties: this.clients[clientKeySending].sharedProperties, //shared properties string
-  //     };
-
-  //     //send this to all people except the sender
-  //     for (var clientKeyRecieving in this.clients) {
-  //       if (clientKeyRecieving != clientKeySending) {
-  //         sendEventToClient(
-  //           stringToSend,
-  //           this.clients[clientKeyRecieving].socket
-  //         );
-  //       }
-  //     }
-  //   }
-  // }
 
   getClientsInArray() {
     this.clientsCleanup();
@@ -344,14 +293,10 @@ class Client {
   entities = {};
 }
 
-// console.log(new Client("example ws"));
-// console.log(new Client("example ws"));
-// console.log(new Client("example ws"));
-
 wss.on("connection", (ws) => {
   //stuff we want to happen after player connects goes down here
   console.log("someone connected");
-  sendSMS("someone connected");
+
   ws.isClosed = false;
 
   //when the client sends us a message
@@ -366,8 +311,6 @@ wss.on("connection", (ws) => {
     switch (realData.eventName) {
       case "join_server":
         console.log(realData);
-        sendSMS(realData);
-        //clientId++; EXPERIMENTAL CUT
 
         //VALIDATIONS
         if (true) {
@@ -385,7 +328,7 @@ wss.on("connection", (ws) => {
         var serverInfo = await getServerInfo(providedUid);
         console.log("serverInfo is");
         console.log(serverInfo);
-        sendSMS("serverInfo is" + JSON.stringify(serverInfo));
+
         if (serverInfo != -1) {
           //the provided uid is real
           //check if this server is already there in servers dict
@@ -462,11 +405,6 @@ wss.on("connection", (ws) => {
             "/activity",
             getServerActivity(providedUid)
           );
-
-          // var client = new Client(ws);
-          // var room = new Room(JSON.stringify(client.clientId)); //creates a room with name as clientId
-          // room.clients[room.roomId] = client;
-          // console.log((room))
         } else {
           //invalid uid
           console.log("INVALID USER ID");
@@ -483,13 +421,10 @@ wss.on("connection", (ws) => {
 
       case "change_room":
         console.log(`Client has sent us: ${data}`);
-        sendSMS("Guy wants to change room to " + realData.roomId);
+
         var submittedServerId = realData.serverId;
         var submittedClientId = realData.clientId;
         var submittedRoomId = realData.roomId;
-        //console.log("reched this point")
-        //console.log(submittedClientId && submittedRoomId && submittedServerId)
-        //console.log(typeof submittedClientId)
 
         if (submittedClientId && submittedRoomId && submittedServerId) {
           if (
@@ -557,7 +492,10 @@ wss.on("connection", (ws) => {
                     submittedRoomId
                   ].getClientsInArray()
                 );
-              } catch {}
+              } catch (e) {
+                console.log("error while getting clients in room");
+                console.log(e);
+              }
 
               try {
                 console.log("submitted room id");
@@ -572,10 +510,6 @@ wss.on("connection", (ws) => {
                   "while checking if client wants to go to his own room this error"
                 );
                 console.log(e);
-                sendSMS(
-                  "while checking if client wants to go to his own room this error" +
-                    e
-                );
               }
 
               console.log("room change allowed?");
@@ -601,6 +535,25 @@ wss.on("connection", (ws) => {
                   if (thisRoomName == submittedRoomId) {
                     roomAlreadyExists = true;
                   }
+                }
+
+                console.log("the old room was");
+                console.log(thisClientInstance.roomId);
+                console.log(
+                  servers[submittedServerId].rooms[thisClientInstance.roomId]
+                );
+                //tell everyone in this room that this guy is gone
+                for (var clientKey in servers[submittedServerId].rooms[
+                  thisClientInstance.roomId
+                ].clients) {
+                  sendEventToClient(
+                    {
+                      eventName: "destroy_player",
+                      clientId: parseInt(submittedClientId),
+                    },
+                    servers[submittedServerId].rooms[thisClientInstance.roomId]
+                      .clients[clientKey].socket
+                  );
                 }
 
                 //add user to desired room
@@ -991,7 +944,7 @@ wss.on("connection", (ws) => {
   // handling what to do when clients disconnects from server
   ws.on("close", () => {
     console.log("someone disconnected");
-    sendSMS("someone disconnected");
+
     ws.isClosed = true;
   });
 
