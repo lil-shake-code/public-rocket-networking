@@ -561,8 +561,14 @@ wss.on("connection", (ws) => {
                   if (roomAlreadyExists) {
                     console.log("room already ecists");
                     //room exists already
-                    servers[submittedServerId].rooms[roomKey].addClient(
+                    console.log(
+                      servers[submittedServerId].rooms[submittedRoomId]
+                    );
+                    servers[submittedServerId].rooms[submittedRoomId].addClient(
                       thisClientInstance
+                    );
+                    console.log(
+                      servers[submittedServerId].rooms[submittedRoomId]
                     );
                   } else {
                     //room does not exist yet
