@@ -422,185 +422,56 @@ wss.on("connection", (ws) => {
       case "change_room":
         console.log(`Client has sent us: ${data}`);
 
-        var submittedServerId = realData.serverId;
-        var submittedClientId = realData.clientId;
-        var submittedRoomId = realData.roomId;
+        const { serverId, clientId, roomId } = realData;
+        const allowedLetters =
+          "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ 1234567890";
+        const validData =
+          typeof clientId === "number" &&
+          typeof roomId === "string" &&
+          roomId.trim() &&
+          allowedLetters.split("").every((char) => roomId.includes(char));
+        const server = servers[serverId];
+        let roomAlreadyExists = false,
+          thisClientInstance = -1;
 
-        if (submittedClientId && submittedRoomId && submittedServerId) {
-          if (
-            typeof submittedClientId == "number" &&
-            typeof submittedRoomId == "string" &&
-            typeof submittedServerId == "string"
-          ) {
-            console.log("room change validations done");
-            //All validations done
-            if (submittedRoomId.trim().length == 0) {
-              break;
-            }
+        if (validData && server) {
+          console.log("room change validations done");
+          let allowRoomChange = isNaN(roomId) || roomId == clientId.toString();
+          console.log("room change allowed?", allowRoomChange);
 
-            //good letters check
-            var goodLetters = true;
-            for (let letter in submittedRoomId) {
-              var allowedLetters =
-                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ 1234567890";
-              if (!allowedLetters.includes(submittedRoomId[letter])) {
-                goodLetters = false;
-                break;
+          if (allowRoomChange) {
+            Object.keys(server.rooms).forEach((roomKey) => {
+              const room = server.rooms[roomKey];
+              if (clientId in room.clients) {
+                thisClientInstance = room.clients[clientId];
+                console.log("Found this guy in some room and removing him");
+                delete room.clients[clientId];
               }
-            }
+              if (roomKey === roomId) roomAlreadyExists = true;
+            });
 
-            if (!goodLetters) {
-              break;
-            }
+            if (thisClientInstance !== -1) {
+              const targetRoom =
+                server.rooms[roomId] || server.addRoom(new Room(roomId));
+              targetRoom.addClient(thisClientInstance);
 
-            var roomAlreadyExists = false;
-            var thisClientInstance = -1;
-            if (submittedServerId in servers) {
-              //if this is a real server id
-
-              console.log("valid server id");
-
-              //Room Change Allowance
-              var allowRoomChange = false;
-              var parsedInt = parseInt(submittedRoomId);
-              console.log("parsedint is");
-              console.log(parsedInt);
-              if (
-                isNaN(parsedInt) ||
-                JSON.stringify(parsedInt).length != submittedRoomId.length
-              ) {
-                allowRoomChange = true;
-              }
-              if (submittedRoomId == JSON.stringify(submittedClientId)) {
-                console.log("guy wants to go to his own room");
-                allowRoomChange = true;
-              }
-
-              console.log("submitted room id is ");
-              console.log(submittedRoomId);
-
-              console.log("server's clients in array is");
-              console.log(servers[submittedServerId].getClientsInArray());
-
-              console.log("get clients in server");
-              console.log(servers[submittedServerId].getClientsInArray());
-
-              try {
-                console.log("get clients in room");
-                console.log(
-                  servers[submittedServerId].rooms[
-                    submittedRoomId
-                  ].getClientsInArray()
-                );
-              } catch (e) {
-                console.log("error while getting clients in room");
-                console.log(e);
-              }
-
-              try {
-                console.log("submitted room id");
-                console.log(submittedRoomId);
-                console.log(JSON.stringify(submittedRoomId));
-
-                console.log("submitted client id");
-                console.log(typeof JSON.stringify(submittedClientId));
-                console.log(JSON.stringify(submittedClientId));
-              } catch (e) {
-                console.log(
-                  "while checking if client wants to go to his own room this error"
-                );
-                console.log(e);
-              }
-
-              console.log("room change allowed?");
-              console.log(allowRoomChange);
-              if (allowRoomChange) {
-                for (roomKey in servers[submittedServerId].rooms) {
-                  //scout all rooms and remove this guy
-                  if (
-                    submittedClientId in
-                    servers[submittedServerId].rooms[roomKey].clients
-                  ) {
-                    thisClientInstance =
-                      servers[submittedServerId].rooms[roomKey].clients[
-                        submittedClientId
-                      ];
-                    console.log("Found this guy in some room and removing him");
-                    delete servers[submittedServerId].rooms[roomKey].clients[
-                      submittedClientId
-                    ]; //remove this client
-                  }
-
-                  var thisRoomName = roomKey;
-                  if (thisRoomName == submittedRoomId) {
-                    roomAlreadyExists = true;
-                  }
-                }
-
-                console.log("the old room was");
-                console.log(thisClientInstance.roomId);
-                console.log(
-                  servers[submittedServerId].rooms[thisClientInstance.roomId]
-                );
-                //tell everyone in this room that this guy is gone
-                for (var clientKey in servers[submittedServerId].rooms[
-                  thisClientInstance.roomId
-                ].clients) {
-                  sendEventToClient(
-                    {
-                      eventName: "destroy_player",
-                      clientId: parseInt(submittedClientId),
-                    },
-                    servers[submittedServerId].rooms[thisClientInstance.roomId]
-                      .clients[clientKey].socket
-                  );
-                }
-
-                //add user to desired room
-                if (thisClientInstance != -1) {
-                  if (roomAlreadyExists) {
-                    console.log("room already ecists");
-                    //room exists already
-                    console.log(
-                      servers[submittedServerId].rooms[submittedRoomId]
-                    );
-                    servers[submittedServerId].rooms[submittedRoomId].addClient(
-                      thisClientInstance
-                    );
-                    console.log(
-                      servers[submittedServerId].rooms[submittedRoomId]
-                    );
-                  } else {
-                    //room does not exist yet
-                    console.log("room does not exist yet");
-                    var room = new Room(submittedRoomId); //make room with given details
-                    room.addClient(thisClientInstance); //add client here
-
-                    servers[submittedServerId].addRoom(room); //add room to server
-                  }
-                }
-                //servers[submittedServerId].rooms[submittedRoomId].clients[submittedClientId]
-
+              Object.values(targetRoom.clients).forEach((client) => {
                 sendEventToClient(
-                  {
-                    eventName: "changed_room",
-                    roomId: submittedRoomId,
-                  },
-                  ws
+                  { eventName: "destroy_player", clientId },
+                  client.socket
                 );
-
-                UpdateServerInfoOnFirebase(submittedServerId);
-              }
-            } else {
-              //invalid uid
-              console.log("INVALID USER ID");
-              sendAlertToClient(
-                ws,
-                "show",
-                "Invalid Server ID. Please make sure this is your Server ID shown on the website2 "
-              );
+              });
+              sendEventToClient({ eventName: "changed_room", roomId }, ws);
+              UpdateServerInfoOnFirebase(serverId);
             }
           }
+        } else {
+          console.log("INVALID DATA or SERVER ID");
+          sendAlertToClient(
+            ws,
+            "show",
+            "Invalid data or Server ID. Please check your details."
+          );
         }
 
         break;
