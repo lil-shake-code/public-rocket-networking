@@ -381,14 +381,14 @@ wss.on("connection", (ws) => {
             console.log("creating new server on nodejs");
             //this server needs to be just started
 
-            var server = new Server(providedUid, serverInfo.maxClients);
-            servers[providedUid] = server;
+            var newServer = new Server(providedUid, serverInfo.maxClients);
+            servers[providedUid] = newServer;
 
             var client = new Client(ws); //create client
             var room = new Room(client.clientId); //make personal room for client
             room.addClient(client); //add client here
 
-            server.addRoom(room); //add room to server
+            newServer.addRoom(room); //add room to server
 
             //Tell this clent we created you
             sendEventToClient(
