@@ -944,6 +944,19 @@ wss.on("connection", (ws) => {
         } catch (e) {}
 
         break;
+
+      case "get_server_time":
+        try {
+          sendEventToClient(
+            {
+              eventName: "get_server_time",
+              time: Date.now(),
+            },
+            ws
+          );
+        } catch (e) {}
+
+        break;
     }
   });
 
