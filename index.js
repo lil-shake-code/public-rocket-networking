@@ -190,6 +190,7 @@ StateUpdate();
 var clientId = 0;
 var roomId = 0;
 var serverId = 0;
+var persistentObjectId = 0;
 
 //object for servers
 var servers = {};
@@ -218,7 +219,10 @@ class Server {
 
   RoomsCleanup() {
     for (var key in this.rooms) {
-      if (Object.keys(this.rooms[key].clients).length == 0) {
+      if (
+        Object.keys(this.rooms[key].clients).length == 0 &&
+        Object.keys(this.rooms[key].persistentObjects).length == 0
+      ) {
         delete this.rooms[key];
       }
     }
@@ -242,6 +246,11 @@ class Room {
   clients = {
     //an empty dictionary
     //all clients can go here
+  };
+
+  persistentObjects = {
+    //an empty dictionary
+    //all persistent objects can go here
   };
 
   addClient(client) {
@@ -291,6 +300,13 @@ class Client {
   sharedProperties = "";
 
   entities = {};
+}
+
+class PersistentObject {
+  constructor(sharedProperties) {
+    this.persistentObjectId = persistentObjectId++;
+    this.sharedProperties = sharedProperties;
+  }
 }
 
 wss.on("connection", (ws) => {
@@ -463,8 +479,7 @@ wss.on("connection", (ws) => {
               //Room Change Allowance
               var allowRoomChange = false;
               var parsedInt = parseInt(submittedRoomId);
-              console.log("parsedint is");
-              console.log(parsedInt);
+
               if (
                 isNaN(parsedInt) ||
                 JSON.stringify(parsedInt).length != submittedRoomId.length
@@ -478,40 +493,6 @@ wss.on("connection", (ws) => {
 
               console.log("submitted room id is ");
               console.log(submittedRoomId);
-
-              console.log("server's clients in array is");
-              console.log(servers[submittedServerId].getClientsInArray());
-
-              console.log("get clients in server");
-              console.log(servers[submittedServerId].getClientsInArray());
-
-              try {
-                console.log("get clients in room");
-                console.log(
-                  servers[submittedServerId].rooms[
-                    submittedRoomId
-                  ].getClientsInArray()
-                );
-              } catch (e) {
-                console.log("error while getting clients in room");
-                console.log(e);
-              }
-
-              try {
-                console.log("submitted room id");
-                console.log(submittedRoomId);
-                console.log(JSON.stringify(submittedRoomId));
-
-                console.log("submitted client id");
-                console.log(typeof JSON.stringify(submittedClientId));
-                console.log(JSON.stringify(submittedClientId));
-              } catch (e) {
-                console.log(
-                  "while checking if client wants to go to his own room this error"
-                );
-                console.log(e);
-              }
-
               console.log("room change allowed?");
               console.log(allowRoomChange);
               if (allowRoomChange) {
@@ -537,11 +518,6 @@ wss.on("connection", (ws) => {
                   }
                 }
 
-                console.log("the old room was");
-                console.log(thisClientInstance.roomId);
-                console.log(
-                  servers[submittedServerId].rooms[thisClientInstance.roomId]
-                );
                 //tell everyone in this room that this guy is gone
                 for (var clientKey in servers[submittedServerId].rooms[
                   thisClientInstance.roomId
@@ -559,7 +535,7 @@ wss.on("connection", (ws) => {
                 //add user to desired room
                 if (thisClientInstance != -1) {
                   if (roomAlreadyExists) {
-                    console.log("room already ecists");
+                    console.log("Desired room already exists");
                     //room exists already
                     console.log(
                       servers[submittedServerId].rooms[submittedRoomId]
@@ -572,7 +548,7 @@ wss.on("connection", (ws) => {
                     );
                   } else {
                     //room does not exist yet
-                    console.log("room does not exist yet");
+                    console.log("Desired room does not exist yet");
                     var room = new Room(submittedRoomId); //make room with given details
                     room.addClient(thisClientInstance); //add client here
 
@@ -956,6 +932,111 @@ wss.on("connection", (ws) => {
           );
         } catch (e) {}
 
+        break;
+
+      case "create_persistent_object":
+        var submittedServerId = realData.serverId;
+        var submittedRoomId = realData.roomId;
+        var submittedPersistentObjectProperties = realData.pOp;
+        if (
+          submittedPersistentObjectProperties &&
+          submittedRoomId &&
+          submittedServerId
+        ) {
+          if (
+            typeof submittedRoomId == "string" &&
+            typeof submittedServerId == "string" &&
+            typeof submittedPersistentObjectProperties == "string"
+          ) {
+            if (submittedServerId in servers) {
+              console.log("room change validations done");
+              //All validations done
+              if (submittedRoomId.trim().length == 0) {
+                break;
+              }
+
+              //good letters check
+              var goodLetters = true;
+              for (let letter in submittedRoomId) {
+                var allowedLetters =
+                  "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ 1234567890";
+                if (!allowedLetters.includes(submittedRoomId[letter])) {
+                  goodLetters = false;
+                  break;
+                }
+              }
+
+              if (!goodLetters) {
+                break;
+              }
+
+              var roomAlreadyExists = false;
+              if (servers[submittedServerId].rooms[submittedRoomId]) {
+                roomAlreadyExists = true;
+              }
+
+              //Room  Allowance
+              var allowRoom = false;
+              var parsedInt = parseInt(submittedRoomId);
+
+              if (
+                isNaN(parsedInt) ||
+                JSON.stringify(parsedInt).length != submittedRoomId.length
+              ) {
+                allowRoom = true;
+              }
+
+              console.log("submitted room id is ");
+              console.log(submittedRoomId);
+              console.log("room  allowed?");
+              console.log(allowRoom);
+              if (allowRoom) {
+                //add user to desired room
+                //room exists already, add the persistent object
+                var newPO = new PersistentObject(
+                  submittedPersistentObjectProperties
+                );
+                if (roomAlreadyExists) {
+                  console.log("Desired room already exists");
+
+                  servers[submittedServerId].rooms[
+                    submittedRoomId
+                  ].persistentObjects[newPO.persistentObjectId] = newPO;
+                } else {
+                  //room does not exist yet
+                  console.log("Desired room does not exist yet");
+
+                  var room = new Room(submittedRoomId); //make room with given details
+                  room.persistentObjects[newPO.persistentObjectId] = newPO;
+                  servers[submittedServerId].addRoom(room); //add room to server
+                }
+
+                sendEventToClient(
+                  {
+                    eventName: "created_PO",
+                    POid: newPO.persistentObjectId,
+                  },
+                  ws
+                );
+
+                console.log(servers[submittedServerId].rooms[submittedRoomId]);
+              }
+
+              //check if submitted room exists
+            } else {
+              //invalid uid
+              console.log("submitted server id is" + submittedServerId);
+              console.log(
+                "INVALID USER ID in state update or net yet created this customer's server on node"
+              );
+              sendAlertToClient(
+                ws,
+                "unshow",
+                "Invalid Server ID. Please make sure this is your Server ID shown on the website3.5 "
+              );
+            }
+          }
+        }
         break;
     }
   });
