@@ -1038,6 +1038,35 @@ wss.on("connection", (ws) => {
           }
         }
         break;
+
+      case "edit_persistent_object":
+        var submittedServerId = realData.serverId;
+        var submittedPersistentObjectId = realData.POid;
+        var submittedPersistentObjectProperties = realData.pOp;
+
+        if (
+          submittedPersistentObjectProperties &&
+          submittedPersistentObjectId &&
+          submittedServerId
+        ) {
+          if (
+            typeof submittedPersistentObjectId == "number" &&
+            typeof submittedServerId == "string" &&
+            typeof submittedPersistentObjectProperties == "string"
+          ) {
+            if (submittedServerId in servers) {
+              for (let roomKey in servers[submittedServerId].rooms) {
+                var thisRoom = servers[submittedServerId].rooms[roomKey];
+                if (thisRoom.persistentObjects[submittedPersistentObjectId]) {
+                  thisRoom.persistentObjects[
+                    submittedPersistentObjectId
+                  ].sharedProperties = submittedPersistentObjectProperties;
+                }
+              }
+            }
+          }
+        }
+        break;
     }
   });
 
