@@ -317,11 +317,11 @@ wss.on("connection", (ws) => {
 
   //when the client sends us a message
   ws.on("message", async (data) => {
-    // console.log(`Client has sent us: ${data}`);
+    //console.log(`Client has sent us: ${data}`);
     var realData = JSON.parse(data);
 
     if (realData.eventName != "state_update") {
-      //.log(realData);
+      // console.log(realData);
     }
 
     switch (realData.eventName) {
@@ -1063,9 +1063,35 @@ wss.on("connection", (ws) => {
                   ].sharedProperties = submittedPersistentObjectProperties;
                 }
               }
+              console.log("Edited a Persistent Object");
             }
           }
         }
+        break;
+
+      case "destroy_persistent_object":
+        var submittedServerId = realData.serverId;
+        var submittedPersistentObjectId = realData.POid;
+
+        if (submittedPersistentObjectId && submittedServerId) {
+          if (
+            typeof submittedPersistentObjectId == "number" &&
+            typeof submittedServerId == "string"
+          ) {
+            if (submittedServerId in servers) {
+              for (let roomKey in servers[submittedServerId].rooms) {
+                var thisRoom = servers[submittedServerId].rooms[roomKey];
+                if (thisRoom.persistentObjects[submittedPersistentObjectId]) {
+                  delete thisRoom.persistentObjects[
+                    submittedPersistentObjectId
+                  ];
+                  console.log("Destroyed a persistent object");
+                }
+              }
+            }
+          }
+        }
+
         break;
     }
   });
