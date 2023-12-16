@@ -110,14 +110,31 @@ function setServerInfo(uuid, pathAfterUUID, value) {
  * Get all Activity
  */
 function getServerActivity(uuid) {
-  var activityy = {};
-  for (let roomKey in servers[uuid].rooms) {
-    activityy[roomKey] = {
-      clients: Object.keys(servers[uuid].rooms[roomKey].clients),
-    };
+  var activity = {
+    rooms: {},
+  };
+  var submittedServerId = uuid;
+  if (submittedServerId in servers) {
+    for (let roomKey in servers[submittedServerId].rooms) {
+      activity.rooms[roomKey] = {
+        clients: {},
+        persistentObjects: Object.keys(
+          servers[submittedServerId].rooms[roomKey].persistentObjects
+        ),
+      };
+
+      //update clients
+      for (let clientKey in servers[submittedServerId].rooms[roomKey].clients) {
+        activity.rooms[roomKey].clients[clientKey] = Object.keys(
+          servers[submittedServerId].rooms[roomKey].clients[clientKey].entities
+        );
+      }
+    }
+
+    //activity is updated fully
   }
 
-  return activityy;
+  return activity;
 }
 
 /*
@@ -1293,6 +1310,45 @@ wss.on("connection", (ws) => {
                 }
               }
             }
+          }
+        }
+
+        break;
+
+      case "view_server_activity":
+        var submittedServerId = realData.serverId;
+        if (typeof submittedServerId == "string") {
+          if (submittedServerId in servers) {
+            var activity = {
+              rooms: {},
+            };
+            for (let roomKey in servers[submittedServerId].rooms) {
+              activity.rooms[roomKey] = {
+                clients: {},
+                persistentObjects: Object.keys(
+                  servers[submittedServerId].rooms[roomKey].persistentObjects
+                ),
+              };
+
+              //update clients
+              for (let clientKey in servers[submittedServerId].rooms[roomKey]
+                .clients) {
+                activity.rooms[roomKey].clients[clientKey] = Object.keys(
+                  servers[submittedServerId].rooms[roomKey].clients[clientKey]
+                    .entities
+                );
+              }
+            }
+
+            //activity is updated fully
+
+            sendEventToClient(
+              {
+                eventName: "full_server_view",
+                activity: activity,
+              },
+              ws
+            );
           }
         }
 
