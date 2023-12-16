@@ -190,7 +190,7 @@ StateUpdate();
 var clientId = 0;
 var roomId = 0;
 var serverId = 0;
-var persistentObjectId = 0;
+var persistentObjectId = 1;
 
 //object for servers
 var servers = {};
@@ -540,12 +540,37 @@ wss.on("connection", (ws) => {
                     console.log(
                       servers[submittedServerId].rooms[submittedRoomId]
                     );
+                    //add the client
                     servers[submittedServerId].rooms[submittedRoomId].addClient(
                       thisClientInstance
                     );
                     console.log(
                       servers[submittedServerId].rooms[submittedRoomId]
                     );
+                    //tell this client about all other persistent objects in the room
+                    var thisRoom =
+                      servers[submittedServerId].rooms[submittedRoomId];
+
+                    for (let persistentObjectId in thisRoom.persistentObjects) {
+                      console.log({
+                        eventName: "pO_update",
+                        POid: persistentObjectId,
+                        pOp: thisRoom.persistentObjects[persistentObjectId]
+                          .sharedProperties,
+                        roomId: submittedRoomId,
+                      });
+                      console.log(ws);
+                      sendEventToClient(
+                        {
+                          eventName: "pO_update",
+                          POid: persistentObjectId,
+                          pOp: thisRoom.persistentObjects[persistentObjectId]
+                            .sharedProperties,
+                          roomId: submittedRoomId,
+                        },
+                        ws
+                      );
+                    }
                   } else {
                     //room does not exist yet
                     console.log("Desired room does not exist yet");
@@ -1002,6 +1027,21 @@ wss.on("connection", (ws) => {
                   servers[submittedServerId].rooms[
                     submittedRoomId
                   ].persistentObjects[newPO.persistentObjectId] = newPO;
+
+                  var thisRoom =
+                    servers[submittedServerId].rooms[submittedRoomId];
+                  //tell everyone in this room that there is a new persistent object
+                  for (clientKey in thisRoom.clients) {
+                    sendEventToClient(
+                      {
+                        eventName: "pO_update",
+                        POid: newPO.persistentObjectId,
+                        pOp: submittedPersistentObjectProperties,
+                        roomId: submittedRoomId,
+                      },
+                      thisRoom.clients[clientKey].socket
+                    );
+                  }
                 } else {
                   //room does not exist yet
                   console.log("Desired room does not exist yet");
@@ -1061,9 +1101,21 @@ wss.on("connection", (ws) => {
                   thisRoom.persistentObjects[
                     submittedPersistentObjectId
                   ].sharedProperties = submittedPersistentObjectProperties;
+                  console.log("Edited a Persistent Object");
+                  //tell everyone in this room that this po is edited
+                  for (clientKey in thisRoom.clients) {
+                    sendEventToClient(
+                      {
+                        eventName: "pO_update",
+                        POid: submittedPersistentObjectId,
+                        pOp: submittedPersistentObjectProperties,
+                        roomId: roomKey,
+                      },
+                      thisRoom.clients[clientKey].socket
+                    );
+                  }
                 }
               }
-              console.log("Edited a Persistent Object");
             }
           }
         }
@@ -1086,6 +1138,16 @@ wss.on("connection", (ws) => {
                     submittedPersistentObjectId
                   ];
                   console.log("Destroyed a persistent object");
+                  //tell everyone in this room that this po is deleted
+                  for (clientKey in thisRoom.clients) {
+                    sendEventToClient(
+                      {
+                        eventName: "destroy_pO",
+                        POid: submittedPersistentObjectId,
+                      },
+                      thisRoom.clients[clientKey].socket
+                    );
+                  }
                 }
               }
             }
