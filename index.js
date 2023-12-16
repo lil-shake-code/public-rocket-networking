@@ -277,6 +277,8 @@ class Room {
               this.clients[clientKey].socket
             );
           }
+          //revise pseudohost
+          this.revisePseudoHost();
         }
       }
     } catch (e) {
@@ -289,6 +291,63 @@ class Room {
     var cArr = Object.keys(this.clients);
     return cArr;
   }
+
+  revisePseudoHost() {
+    if (Object.keys(this.clients).length === 0) {
+      return;
+    }
+
+    var earliestTime = Infinity;
+    var earliestClientKey = null; // Use null instead of 0
+
+    // Find the earliest joined time and the corresponding client key
+    for (let clientKey in this.clients) {
+      const client = this.clients[clientKey];
+      if (client.joinedAt < earliestTime) {
+        earliestTime = client.joinedAt;
+        earliestClientKey = clientKey;
+      }
+    }
+
+    // Set the found client as the pseudo host
+    const previousPseudoHostKey = this.getPseudoHostKey();
+    for (let clientKey in this.clients) {
+      const client = this.clients[clientKey];
+      client.isPseudoHost = clientKey === earliestClientKey;
+    }
+
+    // Check if the pseudo host has changed
+    const currentPseudoHostKey = this.getPseudoHostKey();
+    if (previousPseudoHostKey !== currentPseudoHostKey) {
+      // Send an update to all clients in this room
+      for (let clientKey in this.clients) {
+        sendEventToClient(
+          {
+            eventName: "pseudoHost",
+            pH: currentPseudoHostKey,
+          },
+          this.clients[clientKey].socket
+        );
+      }
+    }
+  }
+
+  getPseudoHostKey() {
+    let foundPseudoHostKey = null;
+
+    for (let clientKey in this.clients) {
+      const client = this.clients[clientKey];
+      if (client.isPseudoHost) {
+        if (foundPseudoHostKey !== null) {
+          // Another client already found with isPseudoHost = true
+          return null;
+        }
+        foundPseudoHostKey = clientKey;
+      }
+    }
+
+    return foundPseudoHostKey;
+  }
 }
 class Client {
   constructor(ws) {
@@ -298,6 +357,7 @@ class Client {
   clientId = ++clientId; //CAN REMOVE THE  ++
 
   sharedProperties = "";
+  isPseudoHost = false;
 
   entities = {};
 }
@@ -544,6 +604,10 @@ wss.on("connection", (ws) => {
                     servers[submittedServerId].rooms[submittedRoomId].addClient(
                       thisClientInstance
                     );
+                    //pseudohost logic - time when client joined
+                    servers[submittedServerId].rooms[submittedRoomId].clients[
+                      submittedClientId
+                    ].joinedAt = Date.now();
                     console.log(
                       servers[submittedServerId].rooms[submittedRoomId]
                     );
@@ -569,6 +633,10 @@ wss.on("connection", (ws) => {
                     var room = new Room(submittedRoomId); //make room with given details
                     room.addClient(thisClientInstance); //add client here
 
+                    //pseudohost logic - joinedat
+
+                    room.clients[submittedClientId].joinedAt = Date.now();
+
                     servers[submittedServerId].addRoom(room); //add room to server
                   }
                 }
@@ -581,6 +649,10 @@ wss.on("connection", (ws) => {
                   },
                   ws
                 );
+                //every time there is a room change revise pseudohost
+                servers[submittedServerId].rooms[
+                  submittedRoomId
+                ].revisePseudoHost();
 
                 UpdateServerInfoOnFirebase(submittedServerId);
               }
@@ -951,9 +1023,12 @@ wss.on("connection", (ws) => {
                   submittedClientId
                 ];
               console.log("Found this guy in some room and removing him");
+
               delete servers[submittedServerId].rooms[roomKey].clients[
                 submittedClientId
               ]; //remove this client
+              //revise pseudo host
+              servers[submittedServerId].rooms[roomKey].revisePseudoHost();
             }
           }
 
