@@ -1266,6 +1266,37 @@ wss.on("connection", (ws) => {
         }
 
         break;
+
+      case "kick_player":
+        //console.log(realData);
+        var submittedServerId = realData.serverId;
+        var submittedClientId = realData.clientId;
+        var submittedVictimClientId = realData.KclientId;
+
+        if (submittedClientId && submittedServerId && submittedVictimClientId) {
+          if (
+            typeof submittedClientId == "number" &&
+            typeof submittedVictimClientId == "number" &&
+            typeof submittedServerId == "string"
+          ) {
+            //kick the victim
+            if (submittedServerId in servers) {
+              for (let roomKey in servers[submittedServerId].rooms) {
+                for (let clientKey in servers[submittedServerId].rooms[roomKey]
+                  .clients) {
+                  //destroy the websocket connection
+                  if (clientKey == submittedVictimClientId) {
+                    servers[submittedServerId].rooms[roomKey].clients[
+                      submittedVictimClientId
+                    ].socket.close();
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        break;
     }
   });
 
