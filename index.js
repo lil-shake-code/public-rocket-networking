@@ -552,14 +552,6 @@ wss.on("connection", (ws) => {
                       servers[submittedServerId].rooms[submittedRoomId];
 
                     for (let persistentObjectId in thisRoom.persistentObjects) {
-                      console.log({
-                        eventName: "pO_update",
-                        POid: persistentObjectId,
-                        pOp: thisRoom.persistentObjects[persistentObjectId]
-                          .sharedProperties,
-                        roomId: submittedRoomId,
-                      });
-                      console.log(ws);
                       sendEventToClient(
                         {
                           eventName: "pO_update",
@@ -891,6 +883,50 @@ wss.on("connection", (ws) => {
                 ws,
                 "show",
                 "Invalid Server ID. Please make sure this is your Server ID shown on the website5 "
+              );
+            }
+          }
+        }
+        break;
+
+      case "show_pO_in_room":
+        var submittedServerId = realData.serverId;
+        if (submittedServerId) {
+          if (typeof submittedServerId == "string") {
+            if (submittedServerId in servers) {
+              var submittedRoomId = realData.roomName;
+              if (typeof submittedRoomId == "string") {
+                if (submittedRoomId.length != 0) {
+                  if (submittedRoomId in servers[submittedServerId].rooms) {
+                    sendEventToClient(
+                      {
+                        eventName: "all_pO",
+                        pOs: Object.keys(
+                          servers[submittedServerId].rooms[submittedRoomId]
+                            .persistentObjects
+                        ),
+                      },
+                      ws
+                    );
+                  } else {
+                    //room does not exist on this server
+                    sendEventToClient(
+                      {
+                        eventName: "all_pO",
+                        pOs: -1,
+                      },
+                      ws
+                    );
+                  }
+                }
+              }
+            } else {
+              //invalid uid
+              console.log("INVALID USER ID");
+              sendAlertToClient(
+                ws,
+                "show",
+                "Invalid Server ID. Please make sure this is your Server ID shown on the website5.6 "
               );
             }
           }
