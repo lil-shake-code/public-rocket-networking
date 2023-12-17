@@ -124,10 +124,18 @@ function getServerActivity(uuid) {
       };
 
       //update clients
+      //update clients
       for (let clientKey in servers[submittedServerId].rooms[roomKey].clients) {
-        activity.rooms[roomKey].clients[clientKey] = Object.keys(
-          servers[submittedServerId].rooms[roomKey].clients[clientKey].entities
-        );
+        activity.rooms[roomKey].clients[clientKey] = {
+          entities: Object.keys(
+            servers[submittedServerId].rooms[roomKey].clients[clientKey]
+              .entities
+          ),
+          afk:
+            Date.now() -
+            servers[submittedServerId].rooms[roomKey].clients[clientKey]
+              .lastPingAt,
+        };
       }
     }
 
@@ -375,6 +383,7 @@ class Client {
 
   sharedProperties = "";
   isPseudoHost = false;
+  lastPingAt = Date.now();
 
   entities = {};
 }
@@ -1072,6 +1081,30 @@ wss.on("connection", (ws) => {
           );
         } catch (e) {}
 
+        try {
+          var submittedServerId = realData.serverId;
+          var submittedClientId = realData.clientId;
+
+          if (
+            typeof submittedServerId === "string" &&
+            typeof submittedClientId === "string"
+          ) {
+            if (submittedServerId in servers) {
+              // Iterate through rooms
+              for (let roomKey in servers[submittedServerId].rooms) {
+                const room = servers[submittedServerId].rooms[roomKey];
+
+                // Check if the client is in the current room
+                if (submittedClientId in room.clients) {
+                  // Update the lastPingAt property to current time
+                  room.clients[submittedClientId].lastPingAt = Date.now();
+                  break; // Break the loop as we found and updated the client
+                }
+              }
+            }
+          }
+        } catch (e) {}
+
         break;
 
       case "get_server_time":
@@ -1333,10 +1366,16 @@ wss.on("connection", (ws) => {
               //update clients
               for (let clientKey in servers[submittedServerId].rooms[roomKey]
                 .clients) {
-                activity.rooms[roomKey].clients[clientKey] = Object.keys(
-                  servers[submittedServerId].rooms[roomKey].clients[clientKey]
-                    .entities
-                );
+                activity.rooms[roomKey].clients[clientKey] = {
+                  entities: Object.keys(
+                    servers[submittedServerId].rooms[roomKey].clients[clientKey]
+                      .entities
+                  ),
+                  afk:
+                    Date.now() -
+                    servers[submittedServerId].rooms[roomKey].clients[clientKey]
+                      .lastPingAt,
+                };
               }
             }
 
