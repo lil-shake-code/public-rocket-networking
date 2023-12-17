@@ -1347,7 +1347,8 @@ wss.on("connection", (ws) => {
                     {
                       eventName: "disconnected",
                     },
-                    ws
+                    servers[submittedServerId].rooms[roomKey].clients[clientKey]
+                      .socket
                   );
 
                   //destroy the websocket connection
