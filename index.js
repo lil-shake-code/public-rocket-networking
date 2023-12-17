@@ -62,6 +62,8 @@ async function getServerInfo(uuid) {
 function UpdateServerInfoOnFirebase(providedUid) {
   setServerInfo(providedUid, "/activity", getServerActivity(providedUid));
 }
+//keep calling every 20 sec
+setInterval(UpdateServerInfoOnFirebase, 20 * 1000);
 
 //Cleans up unused rooms and clients
 function CleanRoomsAndClients() {
