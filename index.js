@@ -63,7 +63,11 @@ function UpdateServerInfoOnFirebase(providedUid) {
   setServerInfo(providedUid, "/activity", getServerActivity(providedUid));
 }
 //keep calling every 20 sec
-setInterval(UpdateServerInfoOnFirebase, 20 * 1000);
+setInterval(() => {
+  for (let serverKey in servers) {
+    UpdateServerInfoOnFirebase(serverKey);
+  }
+}, 20 * 1000);
 
 //Cleans up unused rooms and clients
 function CleanRoomsAndClients() {
@@ -1089,7 +1093,7 @@ wss.on("connection", (ws) => {
 
           if (
             typeof submittedServerId === "string" &&
-            typeof submittedClientId === "string"
+            typeof submittedClientId === "number"
           ) {
             if (submittedServerId in servers) {
               // Iterate through rooms
@@ -1105,7 +1109,9 @@ wss.on("connection", (ws) => {
               }
             }
           }
-        } catch (e) {}
+        } catch (e) {
+          console.log(e);
+        }
 
         break;
 
