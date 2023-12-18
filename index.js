@@ -92,7 +92,7 @@ function sendAlertToClient(ws, type, message) {
     type: type, //show alerts are shown
     message: message,
   };
-  ws.send(JSON.stringify(stringToSend));
+  ws.send(substitutionEncrypt(JSON.stringify(stringToSend), ws.uuid));
 }
 
 /*
@@ -100,7 +100,7 @@ function sendAlertToClient(ws, type, message) {
  *
  */
 function sendEventToClient(eventObject, ws) {
-  ws.send(JSON.stringify(eventObject));
+  ws.send(substitutionEncrypt(JSON.stringify(eventObject), ws.uuid));
 }
 
 /*
@@ -216,6 +216,58 @@ function StateUpdate() {
   setTimeout(StateUpdate, 1000 / 60);
 }
 StateUpdate();
+
+// Substitution Cipher Encryption
+function substitutionEncrypt(message, key) {
+  let encryptedMessage = "";
+  for (let i = 0; i < message.length; i++) {
+    let char = message.charAt(i);
+    let keyIndex = key.charCodeAt(i % key.length);
+    let encryptedChar = String.fromCharCode(char.charCodeAt(0) + keyIndex);
+    encryptedMessage += encryptedChar;
+  }
+  return encryptedMessage;
+}
+
+// Substitution Cipher Decryption
+function substitutionDecrypt(encryptedMessage, key) {
+  let decryptedMessage = "";
+  for (let i = 0; i < encryptedMessage.length; i++) {
+    let char = encryptedMessage.charAt(i);
+    let keyIndex = key.charCodeAt(i % key.length);
+    let decryptedChar = String.fromCharCode(char.charCodeAt(0) - keyIndex);
+    decryptedMessage += decryptedChar;
+  }
+  return decryptedMessage;
+}
+
+const crypto = require("crypto");
+
+function md5Hash(str) {
+  const hash = crypto.createHash("md5");
+  hash.update(str, "utf8");
+  return hash.digest("hex");
+}
+
+async function hashToUUIDfromFirebase(hash) {
+  try {
+    // Assuming your hash-to-UUID mapping is stored under "/crypto" in the Firebase database
+    const snapshot = await db.ref("/crypto/" + hash).once("value");
+
+    // Check if the snapshot has any data
+    if (snapshot.exists()) {
+      // The hash exists in the database, return the corresponding UUID
+      const uuid = snapshot.val();
+      return uuid;
+    } else {
+      // Hash not found
+      return null;
+    }
+  } catch (error) {
+    console.error("Error retrieving UUID from Firebase:", error.message);
+    throw error;
+  }
+}
 
 //counters
 var clientId = 0;
@@ -409,7 +461,24 @@ wss.on("connection", (ws) => {
 
   //when the client sends us a message
   ws.on("message", async (data) => {
-    //console.log(`Client has sent us: ${data}`);
+    data = data.toString();
+    // console.log(`Client has sent us:`);
+    // console.log(typeof data);
+    // console.log(` ${data}`);
+
+    if (data.includes("eventName")) {
+      //pass through
+    } else {
+      ///we have to decrypt it
+      var secretKey = ws.uuid;
+      if (secretKey) {
+        data = substitutionDecrypt(data, secretKey);
+      } else {
+        console.log("ERROR IN MESSAGE RECEIVED!");
+        console.log(data);
+      }
+    }
+
     var realData = JSON.parse(data);
 
     if (realData.eventName != "state_update") {
@@ -432,7 +501,10 @@ wss.on("connection", (ws) => {
         }
         console.log("made it through all validations");
         //check if this is a real uid/serverid or not
-        const providedUid = realData.serverId;
+        const hashOfUUID = realData.serverId;
+        const providedUid = await hashToUUIDfromFirebase(hashOfUUID);
+        //attach the uuid to the websocket
+        ws.uuid = providedUid;
         var serverInfo = await getServerInfo(providedUid);
         console.log("serverInfo is");
         console.log(serverInfo);
@@ -965,6 +1037,7 @@ wss.on("connection", (ws) => {
                           servers[submittedServerId].rooms[submittedRoomId]
                             .clients
                         ),
+                        roomId: submittedRoomId,
                       },
                       ws
                     );
@@ -1009,6 +1082,7 @@ wss.on("connection", (ws) => {
                           servers[submittedServerId].rooms[submittedRoomId]
                             .persistentObjects
                         ),
+                        roomId: submittedRoomId,
                       },
                       ws
                     );
