@@ -500,10 +500,22 @@ wss.on("connection", (ws) => {
         }
         //check if this is a real uid/serverid or not
         const hashOfUUID = realData.serverId;
-        const providedUid = await hashToUUIDfromFirebase(hashOfUUID);
-        //attach the uuid to the websocket
-        ws.uuid = providedUid;
-        var serverInfo = await getServerInfo(providedUid);
+        let providedUid = "";
+        console.log(hashOfUUID);
+        if (realData.serverId.length == 32) {
+          console.log("length is");
+          console.log(realData.serverId.length);
+          //this is a hash
+          providedUid = await hashToUUIDfromFirebase(hashOfUUID);
+          //attach the uuid to the websocket
+          ws.uuid = providedUid;
+        } else {
+          //this is not hashed
+          ws.uuid = realData.serverId;
+          providedUid = ws.uuid;
+        }
+
+        var serverInfo = await getServerInfo(ws.uuid);
         console.log("serverInfo is");
         console.log(serverInfo);
 
