@@ -92,7 +92,11 @@ function sendAlertToClient(ws, type, message) {
     type: type, //show alerts are shown
     message: message,
   };
-  ws.send(substitutionEncrypt(JSON.stringify(stringToSend), ws.uuid));
+  if (ws.useCiphering) {
+    ws.send(substitutionEncrypt(JSON.stringify(stringToSend), ws.uuid));
+  } else {
+    ws.send((JSON.stringify(stringToSend), ws.uuid));
+  }
 }
 
 /*
@@ -100,7 +104,11 @@ function sendAlertToClient(ws, type, message) {
  *
  */
 function sendEventToClient(eventObject, ws) {
-  ws.send(substitutionEncrypt(JSON.stringify(eventObject), ws.uuid));
+  if (ws.useCiphering) {
+    ws.send(substitutionEncrypt(JSON.stringify(eventObject), ws.uuid));
+  } else {
+    ws.send((JSON.stringify(eventObject), ws.uuid));
+  }
 }
 
 /*
@@ -119,28 +127,26 @@ function getServerActivity(uuid) {
   var activity = {
     rooms: {},
   };
-  var submittedServerId = uuid;
-  if (submittedServerId in servers) {
-    for (let roomKey in servers[submittedServerId].rooms) {
+
+  if (uuid in servers) {
+    for (let roomKey in servers[uuid].rooms) {
       activity.rooms[roomKey] = {
         clients: {},
         persistentObjects: Object.keys(
-          servers[submittedServerId].rooms[roomKey].persistentObjects
+          servers[uuid].rooms[roomKey].persistentObjects
         ),
       };
 
       //update clients
       //update clients
-      for (let clientKey in servers[submittedServerId].rooms[roomKey].clients) {
+      for (let clientKey in servers[uuid].rooms[roomKey].clients) {
         activity.rooms[roomKey].clients[clientKey] = {
           entities: Object.keys(
-            servers[submittedServerId].rooms[roomKey].clients[clientKey]
-              .entities
+            servers[uuid].rooms[roomKey].clients[clientKey].entities
           ),
           afk:
             Date.now() -
-            servers[submittedServerId].rooms[roomKey].clients[clientKey]
-              .lastPingAt,
+            servers[uuid].rooms[roomKey].clients[clientKey].lastPingAt,
         };
       }
     }
@@ -149,20 +155,6 @@ function getServerActivity(uuid) {
   }
 
   return activity;
-}
-
-/*
- * Check for Server Level validation
- */
-function checkServerLevelValidation(submittedServerId) {
-  if (submittedServerId) {
-    if (typeof submittedServerId == "string") {
-      if (submittedServerId in servers) {
-        return true;
-      }
-    }
-  }
-  return false;
 }
 
 /*
@@ -490,16 +482,22 @@ wss.on("connection", (ws) => {
         console.log(realData);
 
         //VALIDATIONS
-        if (true) {
-          if (typeof realData.serverId != "string") {
+
+        if (typeof realData.serverId != "string") {
+          break;
+        } else {
+          if (realData.serverId.length > 100) {
             break;
-          } else {
-            if (realData.serverId.length > 100) {
-              break;
-            }
           }
         }
+
         console.log("made it through all validations");
+        var useCiphering = realData.uC;
+        if (typeof useCiphering == "boolean") {
+          ws.useCiphering = useCiphering;
+        } else {
+          ws.useCiphering = false;
+        }
         //check if this is a real uid/serverid or not
         const hashOfUUID = realData.serverId;
         const providedUid = await hashToUUIDfromFirebase(hashOfUUID);
@@ -602,7 +600,7 @@ wss.on("connection", (ws) => {
       case "change_room":
         console.log(`Client has sent us: ${data}`);
 
-        var submittedServerId = realData.serverId;
+        var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
         var submittedRoomId = realData.roomId;
 
@@ -775,7 +773,7 @@ wss.on("connection", (ws) => {
         break;
 
       case "state_update":
-        var submittedServerId = realData.serverId;
+        var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
         var submittedSharedPropeties = realData.sharedProperties;
         if (
@@ -826,7 +824,7 @@ wss.on("connection", (ws) => {
 
       case "entity_state_update":
         //console.log(realData);
-        var submittedServerId = realData.serverId;
+        var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
         var submittedEntityProperties = realData.entityP;
         var submittedEntityId = realData.entityId;
@@ -880,7 +878,7 @@ wss.on("connection", (ws) => {
 
       case "SMTC":
         //console.log(realData);
-        var submittedServerId = realData.serverId;
+        var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
         var submittedReceiverClientId = realData.RclientId;
         var submittedMessage = realData.message;
@@ -950,7 +948,7 @@ wss.on("connection", (ws) => {
 
       case "destroy_entity":
         // console.log(realData);
-        var submittedServerId = realData.serverId;
+        var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
 
         var submittedEntityId = realData.entityId;
@@ -997,7 +995,7 @@ wss.on("connection", (ws) => {
         break;
 
       case "show_all_rooms":
-        var submittedServerId = realData.serverId;
+        var submittedServerId = ws.uuid;
         if (submittedServerId) {
           if (typeof submittedServerId == "string") {
             if (submittedServerId in servers) {
@@ -1022,7 +1020,7 @@ wss.on("connection", (ws) => {
         break;
 
       case "show_all_clients_in_room":
-        var submittedServerId = realData.serverId;
+        var submittedServerId = ws.uuid;
         if (submittedServerId) {
           if (typeof submittedServerId == "string") {
             if (submittedServerId in servers) {
@@ -1067,7 +1065,7 @@ wss.on("connection", (ws) => {
         break;
 
       case "show_pO_in_room":
-        var submittedServerId = realData.serverId;
+        var submittedServerId = ws.uuid;
         if (submittedServerId) {
           if (typeof submittedServerId == "string") {
             if (submittedServerId in servers) {
@@ -1112,41 +1110,35 @@ wss.on("connection", (ws) => {
         break;
 
       case "disconnect":
-        if (checkServerLevelValidation(realData.serverId)) {
-          var submittedServerId = realData.serverId;
-          // sendEventToClient({
-          //     eventName : "all_rooms",
-          //     rooms : Object.keys(servers[submittedServerId].rooms)
-          // },ws)
-          for (roomKey in servers[submittedServerId].rooms) {
-            //scout all rooms and remove this guy
-            if (
-              submittedClientId in
-              servers[submittedServerId].rooms[roomKey].clients
-            ) {
-              thisClientInstance =
-                servers[submittedServerId].rooms[roomKey].clients[
-                  submittedClientId
-                ];
-              console.log("Found this guy in some room and removing him");
-
-              delete servers[submittedServerId].rooms[roomKey].clients[
+        var submittedServerId = ws.uuid;
+        for (roomKey in servers[submittedServerId].rooms) {
+          //scout all rooms and remove this guy
+          if (
+            submittedClientId in
+            servers[submittedServerId].rooms[roomKey].clients
+          ) {
+            thisClientInstance =
+              servers[submittedServerId].rooms[roomKey].clients[
                 submittedClientId
-              ]; //remove this client
-              //revise pseudo host
-              servers[submittedServerId].rooms[roomKey].revisePseudoHost();
-            }
+              ];
+            console.log("Found this guy in some room and removing him");
+
+            delete servers[submittedServerId].rooms[roomKey].clients[
+              submittedClientId
+            ]; //remove this client
+            //revise pseudo host
+            servers[submittedServerId].rooms[roomKey].revisePseudoHost();
           }
-
-          sendEventToClient(
-            {
-              eventName: "disconnected",
-            },
-            ws
-          );
-
-          ws.close();
         }
+
+        sendEventToClient(
+          {
+            eventName: "disconnected",
+          },
+          ws
+        );
+
+        ws.close();
 
         break;
 
@@ -1162,7 +1154,7 @@ wss.on("connection", (ws) => {
         } catch (e) {}
 
         try {
-          var submittedServerId = realData.serverId;
+          var submittedServerId = ws.uuid;
           var submittedClientId = realData.clientId;
 
           if (
@@ -1203,7 +1195,7 @@ wss.on("connection", (ws) => {
         break;
 
       case "create_persistent_object":
-        var submittedServerId = realData.serverId;
+        var submittedServerId = ws.uuid;
         var submittedRoomId = realData.roomId;
         var submittedPersistentObjectProperties = realData.pOp;
         if (
@@ -1323,7 +1315,7 @@ wss.on("connection", (ws) => {
         break;
 
       case "edit_persistent_object":
-        var submittedServerId = realData.serverId;
+        var submittedServerId = ws.uuid;
         var submittedPersistentObjectId = realData.POid;
         var submittedPersistentObjectProperties = realData.pOp;
 
@@ -1365,7 +1357,7 @@ wss.on("connection", (ws) => {
         break;
 
       case "destroy_persistent_object":
-        var submittedServerId = realData.serverId;
+        var submittedServerId = ws.uuid;
         var submittedPersistentObjectId = realData.POid;
 
         if (submittedPersistentObjectId && submittedServerId) {
@@ -1401,7 +1393,7 @@ wss.on("connection", (ws) => {
 
       case "kick_player":
         //console.log(realData);
-        var submittedServerId = realData.serverId;
+        var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
         var submittedVictimClientId = realData.KclientId;
 
@@ -1441,7 +1433,7 @@ wss.on("connection", (ws) => {
         break;
 
       case "view_server_activity":
-        var submittedServerId = realData.serverId;
+        var submittedServerId = ws.uuid;
         if (typeof submittedServerId == "string") {
           if (submittedServerId in servers) {
             var activity = {
