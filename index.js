@@ -1420,18 +1420,18 @@ wss.on("connection", (ws) => {
               for (let roomKey in servers[submittedServerId].rooms) {
                 for (let clientKey in servers[submittedServerId].rooms[roomKey]
                   .clients) {
-                  //send the disconencted from server callback
-                  sendEventToClient(
-                    {
-                      eventName: "disconnected",
-                    },
-                    servers[submittedServerId].rooms[roomKey].clients[clientKey]
-                      .socket
-                  );
-
                   //destroy the websocket connection
 
                   if (clientKey == submittedVictimClientId) {
+                    //send the disconencted from server callback
+                    sendEventToClient(
+                      {
+                        eventName: "disconnected",
+                      },
+                      servers[submittedServerId].rooms[roomKey].clients[
+                        clientKey
+                      ].socket
+                    );
                     servers[submittedServerId].rooms[roomKey].clients[
                       submittedVictimClientId
                     ].socket.close();
