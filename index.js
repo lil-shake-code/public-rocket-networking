@@ -95,7 +95,7 @@ function sendAlertToClient(ws, type, message) {
   if (ws.useCiphering) {
     ws.send(substitutionEncrypt(JSON.stringify(stringToSend), ws.uuid));
   } else {
-    ws.send((JSON.stringify(stringToSend), ws.uuid));
+    ws.send(JSON.stringify(stringToSend));
   }
 }
 
@@ -107,7 +107,7 @@ function sendEventToClient(eventObject, ws) {
   if (ws.useCiphering) {
     ws.send(substitutionEncrypt(JSON.stringify(eventObject), ws.uuid));
   } else {
-    ws.send((JSON.stringify(eventObject), ws.uuid));
+    ws.send(JSON.stringify(eventObject));
   }
 }
 
