@@ -9,7 +9,7 @@ const cors = require("cors");
 const express = require("express");
 const app = express();
 app.use(cors());
-
+const axios = require("axios");
 const server = http.createServer(app);
 //res.end
 app.get("/", (req, res) => {
@@ -1487,6 +1487,86 @@ wss.on("connection", (ws) => {
           }
         }
 
+        break;
+
+      case "set_simple_data":
+        var submittedServerId = ws.uuid;
+        var collectionName = realData.c;
+        var documentName = realData.d;
+        var fieldMap = realData.m;
+        const sURL =
+          "https://us-central1-rocket-networking.cloudfunctions.net/api/setData";
+
+        axios
+          .post(sURL, {
+            collectionName: collectionName,
+            documentName: documentName,
+            fieldMap: fieldMap,
+            serverId: submittedServerId,
+          })
+          .then((response) => {
+            console.log("Response:", response.data);
+            // Handle the response data as needed
+          })
+          .catch((error) => {
+            console.error("Error:", error.response.data);
+            // Handle the error as needed
+          });
+        break;
+      case "read_simple_data":
+        var submittedServerId = ws.uuid;
+        var collectionName = realData.c;
+        var documentName = realData.d;
+        var readId = realData.readId;
+        const rURL =
+          "https://us-central1-rocket-networking.cloudfunctions.net/api/readData";
+
+        axios
+          .post(rURL, {
+            collectionName: collectionName,
+            documentName: documentName,
+            serverId: submittedServerId,
+            readId: readId,
+          })
+          .then((response) => {
+            console.log("Response:", response.data);
+            console.log(typeof response.data);
+            // Handle the response data as needed
+            sendEventToClient(
+              {
+                eventName: "read_data",
+                data: response.data,
+                readId: readId,
+              },
+              ws
+            );
+          })
+          .catch((error) => {
+            console.error("Error:", error.response.data);
+            // Handle the error as needed
+          });
+        break;
+      case "delete_simple_data":
+        var submittedServerId = ws.uuid;
+        var collectionName = realData.c;
+        var documentName = realData.d;
+        const dURL =
+          "https://us-central1-rocket-networking.cloudfunctions.net/api/deleteData";
+
+        axios
+          .post(dURL, {
+            collectionName: collectionName,
+            documentName: documentName,
+            serverId: submittedServerId,
+          })
+          .then((response) => {
+            console.log("Response:", response.data);
+            // Handle the response data as needed
+          })
+          .catch((error) => {
+            console.error("Error:", error.response.data);
+            // Handle the error as needed
+          });
         break;
     }
   });
