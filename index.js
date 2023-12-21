@@ -40,17 +40,16 @@ async function getServerInfo(uuid) {
   await ref.once(
     "value",
     (snapshot) => {
-      // console.log(snapshot)
       finalValue = snapshot.val();
     },
     (errorObject) => {
-      console.log("The read failed: " + errorObject.name);
+      console.info("The read failed: " + errorObject.name);
     }
   );
   if (!finalValue) {
     finalValue = -1;
   }
-  console.log("getserverinfo function has returned a value");
+  console.info("getserverinfo function has returned a value");
 
   return finalValue;
 }
@@ -444,7 +443,24 @@ class PersistentObject {
     this.sharedProperties = sharedProperties;
   }
 }
+// Function to override console.log
+function customLog(log, serverId = "default") {
+  // Original console.log behavior
+  console.info(log);
 
+  // Send the log message to the WebSocket server associated with the serverId
+
+  var streamerWs = servers[serverId]?.streamer;
+  if (streamerWs) {
+    if (streamerWs.readyState === WebSocket.OPEN) {
+      console.info("Sending log to streamer");
+      streamerWs.send(JSON.stringify(log));
+    } else {
+      streamerWs = null;
+    }
+  }
+}
+console.log = customLog;
 wss.on("connection", (ws) => {
   //stuff we want to happen after player connects goes down here
   console.log("someone connected");
@@ -471,7 +487,22 @@ wss.on("connection", (ws) => {
       }
     }
 
+    try {
+      JSON.parse(data);
+    } catch (e) {
+      return;
+    }
     var realData = JSON.parse(data);
+
+    //streamers
+    if (realData.eventName == "streamer") {
+      console.log(realData);
+      var submittedServerId = realData.uuid;
+      if (submittedServerId in servers) {
+        servers[submittedServerId].streamer = ws;
+        console.info("Adding streamer to server");
+      }
+    }
 
     if (realData.eventName != "state_update") {
       // console.log(realData);
@@ -479,8 +510,6 @@ wss.on("connection", (ws) => {
 
     switch (realData.eventName) {
       case "join_server":
-        console.log(realData);
-
         //VALIDATIONS
 
         if (typeof realData.serverId != "string") {
@@ -491,7 +520,6 @@ wss.on("connection", (ws) => {
           }
         }
 
-        console.log("made it through all validations");
         var useCiphering = realData.uC;
         if (typeof useCiphering == "boolean") {
           ws.useCiphering = useCiphering;
@@ -514,10 +542,10 @@ wss.on("connection", (ws) => {
           ws.uuid = realData.serverId;
           providedUid = ws.uuid;
         }
-
+        console.log("Someone wants to join your server", ws.uuid);
         var serverInfo = await getServerInfo(ws.uuid);
-        console.log("serverInfo is");
-        console.log(serverInfo);
+        console.log(" the current serverInfo is", ws.uuid);
+        console.log(serverInfo, ws.uuid);
 
         if (serverInfo != -1) {
           //the provided uid is real
@@ -532,9 +560,13 @@ wss.on("connection", (ws) => {
               serverInfo.maxClients
             ) {
               console.log(
-                "Number of clients on this server before adding this new guy is"
+                "Number of clients on this server before adding this new guy is",
+                ws.uuid
               );
-              console.log(servers[providedUid].NumberOfClientsOnthisServer());
+              console.log(
+                servers[providedUid].NumberOfClientsOnthisServer(),
+                ws.uuid
+              );
 
               var client = new Client(ws); //create client
               var room = new Room(client.clientId); //make personal room for client
@@ -552,14 +584,14 @@ wss.on("connection", (ws) => {
               );
             } else {
               if (serverInfo.maxClients == 0) {
-                console.log("SERVER is not allowed to have players!");
+                console.log("SERVER is not allowed to have players!", ws.uuid);
                 sendAlertToClient(
                   ws,
                   "show",
                   " Your free trial is over! Please support us by upgrading your plan."
                 );
               } else {
-                console.log("SERVER HAS REACHED MAX CAPACITY");
+                console.log("SERVER HAS REACHED MAX CAPACITY", ws.uuid);
                 sendAlertToClient(
                   ws,
                   "show",
@@ -568,7 +600,7 @@ wss.on("connection", (ws) => {
               }
             }
           } else {
-            console.log("creating new server on nodejs");
+            console.log("Creating new server on nodejs.", ws.uuid);
             //this server needs to be just started
 
             var newServer = new Server(providedUid, serverInfo.maxClients);
@@ -597,7 +629,7 @@ wss.on("connection", (ws) => {
           );
         } else {
           //invalid uid
-          console.log("INVALID USER ID");
+          console.log("INVALID USER ID", ws.uuid);
           sendAlertToClient(
             ws,
             "show",
@@ -610,8 +642,6 @@ wss.on("connection", (ws) => {
         break;
 
       case "change_room":
-        console.log(`Client has sent us: ${data}`);
-
         var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
         var submittedRoomId = realData.roomId;
@@ -622,7 +652,7 @@ wss.on("connection", (ws) => {
             typeof submittedRoomId == "string" &&
             typeof submittedServerId == "string"
           ) {
-            console.log("room change validations done");
+            console.log("Room Change validation done", ws.uuid);
             //All validations done
             if (submittedRoomId.trim().length == 0) {
               break;
@@ -648,8 +678,6 @@ wss.on("connection", (ws) => {
             if (submittedServerId in servers) {
               //if this is a real server id
 
-              console.log("valid server id");
-
               //Room Change Allowance
               var allowRoomChange = false;
               var parsedInt = parseInt(submittedRoomId);
@@ -661,14 +689,17 @@ wss.on("connection", (ws) => {
                 allowRoomChange = true;
               }
               if (submittedRoomId == JSON.stringify(submittedClientId)) {
-                console.log("guy wants to go to his own room");
+                console.log(
+                  "This client wants to go to their own room",
+                  ws.uuid
+                );
                 allowRoomChange = true;
               }
 
-              console.log("submitted room id is ");
-              console.log(submittedRoomId);
-              console.log("room change allowed?");
-              console.log(allowRoomChange);
+              console.log("Submitted room id is ", ws.uuid);
+              console.log(submittedRoomId, ws.uuid);
+              console.log("Room change allowed?", ws.uuid);
+              console.log(allowRoomChange, ws.uuid);
               if (allowRoomChange) {
                 for (roomKey in servers[submittedServerId].rooms) {
                   //scout all rooms and remove this guy
@@ -680,7 +711,10 @@ wss.on("connection", (ws) => {
                       servers[submittedServerId].rooms[roomKey].clients[
                         submittedClientId
                       ];
-                    console.log("Found this guy in some room and removing him");
+                    console.log(
+                      "Found this client in some room and removing from there",
+                      ws.uuid
+                    );
                     delete servers[submittedServerId].rooms[roomKey].clients[
                       submittedClientId
                     ]; //remove this client
@@ -712,7 +746,8 @@ wss.on("connection", (ws) => {
                     console.log("Desired room already exists");
                     //room exists already
                     console.log(
-                      servers[submittedServerId].rooms[submittedRoomId]
+                      servers[submittedServerId].rooms[submittedRoomId],
+                      ws.uuid
                     );
                     //add the client
                     servers[submittedServerId].rooms[submittedRoomId].addClient(
@@ -722,9 +757,7 @@ wss.on("connection", (ws) => {
                     servers[submittedServerId].rooms[submittedRoomId].clients[
                       submittedClientId
                     ].joinedAt = Date.now();
-                    console.log(
-                      servers[submittedServerId].rooms[submittedRoomId]
-                    );
+
                     //tell this client about all other persistent objects in the room
                     var thisRoom =
                       servers[submittedServerId].rooms[submittedRoomId];
@@ -743,7 +776,7 @@ wss.on("connection", (ws) => {
                     }
                   } else {
                     //room does not exist yet
-                    console.log("Desired room does not exist yet");
+                    console.log("Desired room does not exist yet", ws.uuid);
                     var room = new Room(submittedRoomId); //make room with given details
                     room.addClient(thisClientInstance); //add client here
 
@@ -772,7 +805,7 @@ wss.on("connection", (ws) => {
               }
             } else {
               //invalid uid
-              console.log("INVALID USER ID");
+              console.log("INVALID USER ID", ws.uuid);
               sendAlertToClient(
                 ws,
                 "show",
@@ -799,7 +832,7 @@ wss.on("connection", (ws) => {
             typeof submittedSharedPropeties == "string"
           ) {
             //fully validated
-            //console.log("fully validated")
+
             if (submittedServerId in servers) {
               for (var roomKey in servers[submittedServerId].rooms) {
                 for (var clientKey in servers[submittedServerId].rooms[roomKey]
@@ -813,15 +846,18 @@ wss.on("connection", (ws) => {
                     servers[submittedServerId].rooms[roomKey].clients[
                       clientKey
                     ].sharedProperties = submittedSharedPropeties;
-                    // console.log(servers[submittedServerId].rooms[roomKey].clients[clientKey])
                   }
                 }
               }
             } else {
               //invalid uid
-              console.log("submitted server id is" + submittedServerId);
               console.log(
-                "INVALID USER ID in state update or net yet created this customer's server on node"
+                "submitted server id is" + submittedServerId,
+                ws.uuid
+              );
+              console.log(
+                "INVALID USER ID in state update or net yet created this customer's server on node",
+                ws.uuid
               );
               sendAlertToClient(
                 ws,
@@ -835,7 +871,6 @@ wss.on("connection", (ws) => {
         break;
 
       case "entity_state_update":
-        //console.log(realData);
         var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
         var submittedEntityProperties = realData.entityP;
@@ -853,7 +888,7 @@ wss.on("connection", (ws) => {
             typeof submittedEntityProperties == "string"
           ) {
             //fully validated
-            //console.log("fully validated")
+
             if (submittedServerId in servers) {
               for (var roomKey in servers[submittedServerId].rooms) {
                 for (var clientKey in servers[submittedServerId].rooms[roomKey]
@@ -867,15 +902,18 @@ wss.on("connection", (ws) => {
                     servers[submittedServerId].rooms[roomKey].clients[
                       clientKey
                     ].entities[submittedEntityId] = submittedEntityProperties;
-                    // console.log(servers[submittedServerId].rooms[roomKey].clients[clientKey])
                   }
                 }
               }
             } else {
               //invalid uid
-              console.log("submitted server id is" + submittedServerId);
               console.log(
-                "INVALID USER ID in state update or net yet created this customer's server on node"
+                "submitted server id is" + submittedServerId,
+                ws.uuid
+              );
+              console.log(
+                "INVALID USER ID in state update or net yet created this customer's server on node",
+                ws.uuid
               );
               sendAlertToClient(
                 ws,
@@ -889,7 +927,6 @@ wss.on("connection", (ws) => {
         break;
 
       case "SMTC":
-        //console.log(realData);
         var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
         var submittedReceiverClientId = realData.RclientId;
@@ -907,7 +944,9 @@ wss.on("connection", (ws) => {
             typeof submittedMessage == "string"
           ) {
             //fully validated
-            //console.log("fully validated")
+            console.log("Got a Send message request", ws.uuid);
+            console.log(realData, ws.uuid);
+
             if (submittedServerId in servers) {
               for (var roomKey in servers[submittedServerId].rooms) {
                 for (var clientKey in servers[submittedServerId].rooms[roomKey]
@@ -943,9 +982,13 @@ wss.on("connection", (ws) => {
               }
             } else {
               //invalid uid
-              console.log("submitted server id is" + submittedServerId);
               console.log(
-                "INVALID USER ID in state update or net yet created this customer's server on node"
+                "submitted server id is" + submittedServerId,
+                ws.uuid
+              );
+              console.log(
+                "INVALID USER ID in state update or net yet created this customer's server on node",
+                ws.uuid
               );
               sendAlertToClient(
                 ws,
@@ -959,7 +1002,6 @@ wss.on("connection", (ws) => {
         break;
 
       case "destroy_entity":
-        // console.log(realData);
         var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
 
@@ -971,7 +1013,7 @@ wss.on("connection", (ws) => {
             typeof submittedServerId == "string"
           ) {
             //fully validated
-            //console.log("fully validated")
+
             if (submittedServerId in servers) {
               for (var roomKey in servers[submittedServerId].rooms) {
                 for (var clientKey in servers[submittedServerId].rooms[roomKey]
@@ -985,15 +1027,19 @@ wss.on("connection", (ws) => {
                     delete servers[submittedServerId].rooms[roomKey].clients[
                       clientKey
                     ].entities[submittedEntityId];
-                    // console.log(servers[submittedServerId].rooms[roomKey].clients[clientKey])
+                    console.log("Deleting the entity if it exists...", ws.uuid);
                   }
                 }
               }
             } else {
               //invalid uid
-              console.log("submitted server id is" + submittedServerId);
               console.log(
-                "INVALID USER ID in state update or net yet created this customer's server on node"
+                "submitted server id is" + submittedServerId,
+                ws.uuid
+              );
+              console.log(
+                "INVALID USER ID in state update or net yet created this customer's server on node",
+                ws.uuid
               );
               sendAlertToClient(
                 ws,
@@ -1020,7 +1066,7 @@ wss.on("connection", (ws) => {
               );
             } else {
               //invalid uid
-              console.log("INVALID USER ID");
+              console.log("INVALID USER ID", ws.uuid);
               sendAlertToClient(
                 ws,
                 "show",
@@ -1110,7 +1156,7 @@ wss.on("connection", (ws) => {
               }
             } else {
               //invalid uid
-              console.log("INVALID USER ID");
+              console.log("INVALID USER ID", ws.uuid);
               sendAlertToClient(
                 ws,
                 "show",
@@ -1133,7 +1179,10 @@ wss.on("connection", (ws) => {
               servers[submittedServerId].rooms[roomKey].clients[
                 submittedClientId
               ];
-            console.log("Found this guy in some room and removing him");
+            console.log(
+              "A guy disconnected. Found this guy in some room and removing him",
+              ws.uuid
+            );
 
             delete servers[submittedServerId].rooms[roomKey].clients[
               submittedClientId
@@ -1188,7 +1237,8 @@ wss.on("connection", (ws) => {
             }
           }
         } catch (e) {
-          console.log(e);
+          console.log("Problem in updating afk", ws.uuid);
+          console.log(e, ws.uuid);
         }
 
         break;
@@ -1221,7 +1271,6 @@ wss.on("connection", (ws) => {
             typeof submittedPersistentObjectProperties == "string"
           ) {
             if (submittedServerId in servers) {
-              console.log("room change validations done");
               //All validations done
               if (submittedRoomId.trim().length == 0) {
                 break;
@@ -1258,10 +1307,10 @@ wss.on("connection", (ws) => {
                 allowRoom = true;
               }
 
-              console.log("submitted room id is ");
-              console.log(submittedRoomId);
-              console.log("room  allowed?");
-              console.log(allowRoom);
+              console.log("Submitted room id of PO is ", ws.uuid);
+              console.log(submittedRoomId, ws.uuid);
+              console.log("room  allowed?", ws.uuid);
+              console.log(allowRoom, ws.uuid);
               if (allowRoom) {
                 //add user to desired room
                 //room exists already, add the persistent object
@@ -1269,7 +1318,7 @@ wss.on("connection", (ws) => {
                   submittedPersistentObjectProperties
                 );
                 if (roomAlreadyExists) {
-                  console.log("Desired room already exists");
+                  console.log("Desired room already exists", ws.uuid);
 
                   servers[submittedServerId].rooms[
                     submittedRoomId
@@ -1291,7 +1340,7 @@ wss.on("connection", (ws) => {
                   }
                 } else {
                   //room does not exist yet
-                  console.log("Desired room does not exist yet");
+                  console.log("Desired room does not exist yet", ws.uuid);
 
                   var room = new Room(submittedRoomId); //make room with given details
                   room.persistentObjects[newPO.persistentObjectId] = newPO;
@@ -1305,8 +1354,7 @@ wss.on("connection", (ws) => {
                   },
                   ws
                 );
-
-                console.log(servers[submittedServerId].rooms[submittedRoomId]);
+                console.log("Created PO", ws.uuid);
               }
 
               //check if submitted room exists
@@ -1348,7 +1396,7 @@ wss.on("connection", (ws) => {
                   thisRoom.persistentObjects[
                     submittedPersistentObjectId
                   ].sharedProperties = submittedPersistentObjectProperties;
-                  console.log("Edited a Persistent Object");
+                  console.log("Edited a Persistent Object", ws.uuid);
                   //tell everyone in this room that this po is edited
                   for (clientKey in thisRoom.clients) {
                     sendEventToClient(
@@ -1384,7 +1432,7 @@ wss.on("connection", (ws) => {
                   delete thisRoom.persistentObjects[
                     submittedPersistentObjectId
                   ];
-                  console.log("Destroyed a persistent object");
+                  console.log("Destroyed a persistent object", ws.uuid);
                   //tell everyone in this room that this po is deleted
                   for (clientKey in thisRoom.clients) {
                     sendEventToClient(
@@ -1423,6 +1471,13 @@ wss.on("connection", (ws) => {
                   //destroy the websocket connection
 
                   if (clientKey == submittedVictimClientId) {
+                    console.log(
+                      submittedClientId +
+                        " kicked " +
+                        submittedVictimClientId +
+                        " out",
+                      ws.uuid
+                    );
                     //send the disconencted from server callback
                     sendEventToClient(
                       {
@@ -1505,11 +1560,11 @@ wss.on("connection", (ws) => {
             serverId: submittedServerId,
           })
           .then((response) => {
-            console.log("Response:", response.data);
+            console.log("Response:", response.data, ws.uuid);
             // Handle the response data as needed
           })
           .catch((error) => {
-            console.error("Error:", error.response.data);
+            console.error("Error:", error.response.data, ws.uuid);
             // Handle the error as needed
           });
         break;
@@ -1529,20 +1584,31 @@ wss.on("connection", (ws) => {
             readId: readId,
           })
           .then((response) => {
-            console.log("Response:", response.data);
-            console.log(typeof response.data);
-            // Handle the response data as needed
-            sendEventToClient(
-              {
-                eventName: "read_data",
-                data: response.data,
-                readId: readId,
-              },
-              ws
-            );
+            console.log("Response:", response.status, ws.uuid);
+            if (response.status == 404) {
+              sendEventToClient(
+                {
+                  eventName: "read_data",
+                  data: -1,
+                  readId: readId,
+                },
+                ws
+              );
+            }
+            if (response.status == 200) {
+              // Handle the response data as needed
+              sendEventToClient(
+                {
+                  eventName: "read_data",
+                  data: response.data,
+                  readId: readId,
+                },
+                ws
+              );
+            }
           })
           .catch((error) => {
-            console.error("Error:", error.response.data);
+            console.error("Error:", error);
             // Handle the error as needed
           });
         break;
@@ -1560,11 +1626,11 @@ wss.on("connection", (ws) => {
             serverId: submittedServerId,
           })
           .then((response) => {
-            console.log("Response:", response.data);
+            console.log("Response:", response.data, ws.uuid);
             // Handle the response data as needed
           })
           .catch((error) => {
-            console.error("Error:", error.response.data);
+            console.error("Error:", error.response.data, ws.uuid);
             // Handle the error as needed
           });
         break;
@@ -1573,18 +1639,18 @@ wss.on("connection", (ws) => {
 
   // handling what to do when clients disconnects from server
   ws.on("close", () => {
-    console.log("someone disconnected");
+    console.log("someone disconnected", ws.uuid);
 
     ws.isClosed = true;
   });
 
   // handling client connection error
   ws.onerror = function () {
-    console.log("Some Error occurred");
+    console.log("Some Error occurred in websocket", ws.uuid);
   };
 });
-console.log("The WebSocket server is running");
+console.info("The WebSocket server is running");
 
 server.listen(process.env.PORT || 3000, () => {
-  console.log(`WebSocket server listening on port ${process.env.PORT} `);
+  console.info(`WebSocket server listening on port ${process.env.PORT} `);
 });
