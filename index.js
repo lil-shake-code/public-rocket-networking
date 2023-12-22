@@ -405,6 +405,13 @@ class Room {
           },
           this.clients[clientKey].socket
         );
+        console.log(
+          "Setting the pseudohost of the room " +
+            this.roomId +
+            " to " +
+            currentPseudoHostKey,
+          this.serverId
+        );
       }
     }
   }
@@ -473,12 +480,16 @@ wss.on("connection", (ws) => {
   //when the client sends us a message
   ws.on("message", async (data) => {
     data = data.toString();
-    // console.log(`Client has sent us:`);
-    // console.log(typeof data);
-    // console.log(` ${data}`);
+    try {
+      if (data.length > 2000) {
+        return;
+      }
+    } catch (e) {
+      return;
+    }
 
     if (data.includes("eventName")) {
-      //pass through
+      //pass through, this is for older games
     } else {
       ///we have to decrypt it
       var secretKey = ws.uuid;
@@ -655,7 +666,12 @@ wss.on("connection", (ws) => {
             typeof submittedRoomId == "string" &&
             typeof submittedServerId == "string"
           ) {
-            console.log("Room Change validation done", ws.uuid);
+            console.log(
+              "Got a Room Change Request. from" +
+                submittedClientId +
+                "Room Change validation done",
+              ws.uuid
+            );
             //All validations done
             if (submittedRoomId.trim().length == 0) {
               break;
@@ -978,6 +994,7 @@ wss.on("connection", (ws) => {
                             submittedReceiverClientId
                           ].socket
                         );
+                        console.log("Sent the message.", ws.uuid);
                       }
                     }
                   }
@@ -1016,6 +1033,7 @@ wss.on("connection", (ws) => {
             typeof submittedServerId == "string"
           ) {
             //fully validated
+            console.log("An Entity has to be destroyed ", ws.uuid);
 
             if (submittedServerId in servers) {
               for (var roomKey in servers[submittedServerId].rooms) {
@@ -1060,6 +1078,10 @@ wss.on("connection", (ws) => {
         if (submittedServerId) {
           if (typeof submittedServerId == "string") {
             if (submittedServerId in servers) {
+              console.log(
+                "Getting all Rooms for a show rooms request",
+                ws.uuid
+              );
               sendEventToClient(
                 {
                   eventName: "all_rooms",
@@ -1089,6 +1111,12 @@ wss.on("connection", (ws) => {
               if (typeof submittedRoomId == "string") {
                 if (submittedRoomId.length != 0) {
                   if (submittedRoomId in servers[submittedServerId].rooms) {
+                    console.log(
+                      "Getting all client in room " +
+                        submittedRoomId +
+                        " for a show clients in room request",
+                      ws.uuid
+                    );
                     sendEventToClient(
                       {
                         eventName: "all_clients",
@@ -1134,6 +1162,10 @@ wss.on("connection", (ws) => {
               if (typeof submittedRoomId == "string") {
                 if (submittedRoomId.length != 0) {
                   if (submittedRoomId in servers[submittedServerId].rooms) {
+                    console.log(
+                      "Getting all Persistent objects in room for a show PO req",
+                      ws.uuid
+                    );
                     sendEventToClient(
                       {
                         eventName: "all_pO",
@@ -1147,6 +1179,10 @@ wss.on("connection", (ws) => {
                     );
                   } else {
                     //room does not exist on this server
+                    console.log(
+                      "Tried to get all Persistent objects in room for a show PO req, but the room didnt exist",
+                      ws.uuid
+                    );
                     sendEventToClient(
                       {
                         eventName: "all_pO",
@@ -1275,6 +1311,7 @@ wss.on("connection", (ws) => {
           ) {
             if (submittedServerId in servers) {
               //All validations done
+              console.log("Got a create persistent object request.", ws.uuid);
               if (submittedRoomId.trim().length == 0) {
                 break;
               }
@@ -1429,6 +1466,7 @@ wss.on("connection", (ws) => {
             typeof submittedServerId == "string"
           ) {
             if (submittedServerId in servers) {
+              console.log("Got a destroy persistent object request", ws.uuid);
               for (let roomKey in servers[submittedServerId].rooms) {
                 var thisRoom = servers[submittedServerId].rooms[roomKey];
                 if (thisRoom.persistentObjects[submittedPersistentObjectId]) {
@@ -1468,6 +1506,7 @@ wss.on("connection", (ws) => {
           ) {
             //kick the victim
             if (submittedServerId in servers) {
+              console.log("Got a kick player request");
               for (let roomKey in servers[submittedServerId].rooms) {
                 for (let clientKey in servers[submittedServerId].rooms[roomKey]
                   .clients) {
