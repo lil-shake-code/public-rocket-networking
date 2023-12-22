@@ -169,6 +169,9 @@ function StateUpdate() {
           eventName: "state_update",
           clientId: parseInt(clientKey),
           roomId: roomKey,
+          afk:
+            Date.now() -
+            servers[serverKey].rooms[roomKey].clients[clientKey].lastPingAt,
           SP: servers[serverKey].rooms[roomKey].clients[clientKey]
             .sharedProperties,
           entities: JSON.stringify(
