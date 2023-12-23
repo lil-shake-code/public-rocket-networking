@@ -481,7 +481,7 @@ wss.on("connection", (ws) => {
   ws.on("message", async (data) => {
     data = data.toString();
     try {
-      if (data.length > 2000) {
+      if (data.length > 10000) {
         return;
       }
     } catch (e) {
@@ -918,6 +918,31 @@ wss.on("connection", (ws) => {
                   ) {
                     //we have found this client.
                     //just update the entity
+                    var currentNumberOfEntities = Object.keys(
+                      servers[submittedServerId].rooms[roomKey].clients[
+                        clientKey
+                      ].entities
+                    ).length;
+                    console.log(
+                      "Total entities on client id " +
+                        clientKey +
+                        " before adding this is " +
+                        currentNumberOfEntities,
+                      ws.uuid
+                    );
+                    const ENTITY_LIMIT = 30;
+                    if (currentNumberOfEntities >= ENTITY_LIMIT) {
+                      console.log(
+                        "SERVER HAS REACHED MAX ENTITIES  CAPACITY for a client",
+                        ws.uuid
+                      );
+                      sendAlertToClient(
+                        ws,
+                        "show",
+                        " You Server has reached maximum ENTITIES capacity! Please upgrade your plan."
+                      );
+                      return;
+                    }
                     servers[submittedServerId].rooms[roomKey].clients[
                       clientKey
                     ].entities[submittedEntityId] = submittedEntityProperties;
@@ -1310,8 +1335,35 @@ wss.on("connection", (ws) => {
             typeof submittedPersistentObjectProperties == "string"
           ) {
             if (submittedServerId in servers) {
+              var totalPersistentObjects = 0;
+              for (let roomKey in servers[submittedServerId].rooms) {
+                var room = servers[submittedServerId].rooms[roomKey];
+                totalPersistentObjects += Object.keys(
+                  room.persistentObjects
+                ).length;
+              }
+
               //All validations done
               console.log("Got a create persistent object request.", ws.uuid);
+              console.log(
+                "Total persistent objects before adding this is " +
+                  totalPersistentObjects,
+                ws.uuid
+              );
+              const PERSISTENT_OBJECTS_LIMIT =
+                servers[submittedServerId].maxClients * 10;
+              if (totalPersistentObjects >= PERSISTENT_OBJECTS_LIMIT) {
+                console.log(
+                  "SERVER HAS REACHED MAX PERSISTENT OBJ CAPACITY",
+                  ws.uuid
+                );
+                sendAlertToClient(
+                  ws,
+                  "show",
+                  " You Server has reached maximum PERSISTENT OBJECT capacity! Please upgrade your plan."
+                );
+                return;
+              }
               if (submittedRoomId.trim().length == 0) {
                 break;
               }
