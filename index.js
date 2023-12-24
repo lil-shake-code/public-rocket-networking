@@ -209,7 +209,7 @@ function StateUpdate() {
 
   setTimeout(StateUpdate, 1000 / 60);
 }
-StateUpdate();
+// StateUpdate();
 
 // Substitution Cipher Encryption
 function substitutionEncrypt(message, key) {
@@ -274,12 +274,13 @@ var servers = {};
 
 class Server {
   constructor(serverId, maxClients) {
-    //the uuid from thunkable
     this.serverId = serverId;
     this.maxClients = maxClients;
+    this.frameRate = 60; // Default frame rate is 60 fps
+    this.rooms = {};
+    this.stateUpdate();
   }
 
-  rooms = {};
   addRoom(room) {
     room.serverId = this.serverId;
     this.rooms[room.roomId] = room;
@@ -312,7 +313,46 @@ class Server {
     }
     return cArr;
   }
+
+  stateUpdate() {
+    // Your state update logic goes here
+    for (let roomKey in this.rooms) {
+      for (let clientKey in this.rooms[roomKey].clients) {
+        var stringToSend = {
+          eventName: "state_update",
+          clientId: parseInt(clientKey),
+          roomId: roomKey,
+          afk: Date.now() - this.rooms[roomKey].clients[clientKey].lastPingAt,
+          SP: this.rooms[roomKey].clients[clientKey].sharedProperties,
+          entities: JSON.stringify(
+            this.rooms[roomKey].clients[clientKey].entities
+          ),
+        };
+
+        if (
+          !stringToSend.SP ||
+          this.rooms[roomKey].clients[clientKey].socket.isClosed
+        ) {
+          continue; // Skip sending updates for dead players or players with missing shared properties
+        }
+
+        // send to other players
+        for (let otherClientKey in this.rooms[roomKey].clients) {
+          if (otherClientKey != clientKey) {
+            sendEventToClient(
+              stringToSend,
+              this.rooms[roomKey].clients[otherClientKey].socket
+            );
+          }
+        }
+      }
+    }
+
+    // Use this.frameRate for the frame rate of this server
+    setTimeout(() => this.stateUpdate(), 1000 / this.frameRate);
+  }
 }
+
 class Room {
   constructor(roomId) {
     //the main fucking constructor
@@ -464,7 +504,11 @@ function customLog(log, serverId = "default") {
   if (streamerWs) {
     if (streamerWs.readyState === WebSocket.OPEN) {
       console.info("Sending log to streamer");
-      streamerWs.send(JSON.stringify(log));
+      var stringToSend = {
+        eventName: "log",
+        log: JSON.stringify(log),
+      };
+      streamerWs.send(JSON.stringify(stringToSend));
     } else {
       streamerWs = null;
     }
@@ -515,6 +559,13 @@ wss.on("connection", (ws) => {
       if (submittedServerId in servers) {
         servers[submittedServerId].streamer = ws;
         console.info("Adding streamer to server");
+      } else {
+        var stringToSend = {
+          eventName: "alert",
+          message:
+            "The server has not been initiated yet, please play your game, then refresh this page and you can see logs!",
+        };
+        ws.send(JSON.stringify(stringToSend));
       }
     }
 
@@ -764,10 +815,7 @@ wss.on("connection", (ws) => {
                   if (roomAlreadyExists) {
                     console.log("Desired room already exists");
                     //room exists already
-                    console.log(
-                      servers[submittedServerId].rooms[submittedRoomId],
-                      ws.uuid
-                    );
+
                     //add the client
                     servers[submittedServerId].rooms[submittedRoomId].addClient(
                       thisClientInstance
