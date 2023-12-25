@@ -559,6 +559,12 @@ wss.on("connection", (ws) => {
       if (submittedServerId in servers) {
         servers[submittedServerId].streamer = ws;
         console.info("Adding streamer to server");
+        ws.uuid = submittedServerId;
+        var stringToSend = {
+          eventName: "init_metadata",
+          fps: servers[submittedServerId].frameRate,
+        };
+        ws.send(JSON.stringify(stringToSend));
       } else {
         var stringToSend = {
           eventName: "alert",
@@ -566,6 +572,28 @@ wss.on("connection", (ws) => {
             "The server has not been initiated yet, please play your game, then refresh this page and you can see logs!",
         };
         ws.send(JSON.stringify(stringToSend));
+      }
+    }
+    if (realData.eventName == "streamer_set_fps") {
+      var fps = Math.floor(realData.fps);
+      if (typeof fps == number && fps > 1 && fps < 61) {
+        if (ws.uuid in servers) {
+          servers[ws.uuid].frameRate = fps;
+          var stringToSend = {
+            eventName: "set_fps",
+            message:
+              "The server's state update freq. has succesfully been changed to " +
+              fps +
+              " per second",
+          };
+          console.log(
+            "The server's state update freq. has succesfully been changed to " +
+              fps +
+              " per second",
+            ws.uuid
+          );
+          ws.send(JSON.stringify(stringToSend));
+        }
       }
     }
 
