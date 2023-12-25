@@ -524,6 +524,7 @@ wss.on("connection", (ws) => {
   //when the client sends us a message
   ws.on("message", async (data) => {
     data = data.toString();
+    console.log(data);
     try {
       if (data.length > 10000) {
         return;
@@ -576,7 +577,7 @@ wss.on("connection", (ws) => {
     }
     if (realData.eventName == "streamer_set_fps") {
       var fps = Math.floor(realData.fps);
-      if (typeof fps == number && fps > 1 && fps < 61) {
+      if (typeof fps == "number" && fps > 1 && fps < 61) {
         if (ws.uuid in servers) {
           servers[ws.uuid].frameRate = fps;
           var stringToSend = {
