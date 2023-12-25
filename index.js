@@ -1126,6 +1126,86 @@ wss.on("connection", (ws) => {
 
         break;
 
+      case "SETC":
+        var submittedServerId = ws.uuid;
+        var submittedClientId = realData.clientId;
+        var submittedReceiverClientId = realData.RclientId;
+        var submittedMessage = realData.message;
+        var submittedEvent = realData.event;
+        if (
+          submittedClientId &&
+          submittedServerId &&
+          submittedReceiverClientId &&
+          submittedMessage &&
+          submittedEvent
+        ) {
+          if (
+            typeof submittedClientId == "number" &&
+            typeof submittedReceiverClientId == "number" &&
+            typeof submittedServerId == "string" &&
+            typeof submittedMessage == "string" &&
+            typeof submittedEvent == "string"
+          ) {
+            //fully validated
+            console.log("Got a Send Event request", ws.uuid);
+            console.log(realData, ws.uuid);
+
+            if (submittedServerId in servers) {
+              for (var roomKey in servers[submittedServerId].rooms) {
+                for (var clientKey in servers[submittedServerId].rooms[roomKey]
+                  .clients) {
+                  if (
+                    servers[submittedServerId].rooms[roomKey].clients[clientKey]
+                      .clientId == submittedClientId
+                  ) {
+                    //we have found this client.
+                    // now send message to reciever
+                    for (var roomKey2 in servers[submittedServerId].rooms) {
+                      //in all rooms
+                      if (
+                        servers[submittedServerId].rooms[roomKey2].clients[
+                          submittedReceiverClientId
+                        ]
+                      ) {
+                        //if the reciever is in this room
+                        sendEventToClient(
+                          {
+                            eventName: "SETC",
+                            message: submittedMessage,
+                            event: submittedEvent,
+                            senderClientId: submittedClientId,
+                          },
+                          servers[submittedServerId].rooms[roomKey2].clients[
+                            submittedReceiverClientId
+                          ].socket
+                        );
+                        console.log("Sent the event.", ws.uuid);
+                      }
+                    }
+                  }
+                }
+              }
+            } else {
+              //invalid uid
+              console.log(
+                "submitted server id is" + submittedServerId,
+                ws.uuid
+              );
+              console.log(
+                "INVALID USER ID in state update or net yet created this customer's server on node",
+                ws.uuid
+              );
+              sendAlertToClient(
+                ws,
+                "unshow",
+                "Invalid Server ID. Please make sure this is your Server ID shown on the website3.5 "
+              );
+            }
+          }
+        }
+
+        break;
+
       case "destroy_entity":
         var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
@@ -1819,6 +1899,55 @@ wss.on("connection", (ws) => {
           })
           .catch((error) => {
             console.error("Error:", error.response.data, ws.uuid);
+            // Handle the error as needed
+          });
+        break;
+
+      case "get_db_summary":
+        var submittedServerId = ws.uuid;
+
+        const mURL =
+          "https://us-central1-rocket-networking.cloudfunctions.net/api/database/metadata";
+        const headers = {
+          Authorization: submittedServerId,
+        };
+
+        axios
+          .get(mURL, {
+            headers,
+          })
+          .then((response) => {
+            // console.log("Response:", response.status, ws.uuid);
+
+            try {
+              var db = {};
+              for (let i in response.data) {
+                var docs = [];
+                for (let j in response.data[i].documents) {
+                  docs.push(response.data[i].documents[j].name);
+                }
+                db[response.data[i].name] = docs;
+              }
+              console.log(db);
+              if (response.status == 200) {
+                // Handle the response data as needed
+                sendEventToClient(
+                  {
+                    eventName: "db_summary",
+                    db: db,
+                  },
+                  ws
+                );
+              }
+            } catch (e) {}
+          })
+          .catch((error) => {
+            console.error("Error:");
+            console.log(error, ws.uuid);
+            if (error.response.status == 404) {
+              console.log("404, error in getting server");
+            }
+
             // Handle the error as needed
           });
         break;
