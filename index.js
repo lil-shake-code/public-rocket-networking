@@ -732,7 +732,7 @@ wss.on("connection", (ws) => {
             var goodLetters = true;
             for (let letter in submittedRoomId) {
               var allowedLetters =
-                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ 1234567890";
+                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ 1234567890_";
               if (!allowedLetters.includes(submittedRoomId[letter])) {
                 goodLetters = false;
                 break;
@@ -742,6 +742,7 @@ wss.on("connection", (ws) => {
             if (!goodLetters) {
               break;
             }
+            console.log("Good letters check done", ws.uuid);
 
             var roomAlreadyExists = false;
             var thisClientInstance = -1;
@@ -751,6 +752,8 @@ wss.on("connection", (ws) => {
               //Room Change Allowance
               var allowRoomChange = false;
               var parsedInt = parseInt(submittedRoomId);
+              console.log("parsedint is");
+              console.log(parsedInt);
 
               if (
                 isNaN(parsedInt) ||
@@ -1260,6 +1263,7 @@ wss.on("connection", (ws) => {
                       {
                         eventName: "all_pO",
                         pOs: -1,
+                        roomId: submittedRoomId,
                       },
                       ws
                     );
