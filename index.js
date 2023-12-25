@@ -524,7 +524,7 @@ wss.on("connection", (ws) => {
   //when the client sends us a message
   ws.on("message", async (data) => {
     data = data.toString();
-    console.log(data);
+
     try {
       if (data.length > 10000) {
         return;
@@ -1759,8 +1759,9 @@ wss.on("connection", (ws) => {
             readId: readId,
           })
           .then((response) => {
-            console.log("Response:", response.status, ws.uuid);
+            // console.log("Response:", response.status, ws.uuid);
             if (response.status == 404) {
+              console.log("404");
               sendEventToClient(
                 {
                   eventName: "read_data",
@@ -1783,7 +1784,19 @@ wss.on("connection", (ws) => {
             }
           })
           .catch((error) => {
-            console.error("Error:", error);
+            console.error("Error:");
+            if (error.response.status == 404) {
+              console.log("404, document not found");
+              sendEventToClient(
+                {
+                  eventName: "read_data",
+                  data: -1,
+                  readId: readId,
+                },
+                ws
+              );
+            }
+
             // Handle the error as needed
           });
         break;
