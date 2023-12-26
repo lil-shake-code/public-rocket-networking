@@ -68,12 +68,12 @@ setInterval(() => {
   }
 }, 20 * 1000);
 
-//Cleans up unused rooms and clients
+// Cleans up unused rooms and clients
 function CleanRoomsAndClients() {
   for (let serverKey in servers) {
     servers[serverKey].RoomsCleanup();
-    for (let roomKey in servers[serverKey].rooms) {
-      servers[serverKey].rooms[roomKey].clientsCleanup();
+    for (let gameId in servers[serverKey].games) {
+      servers[serverKey].games[gameId].RoomsCleanup();
     }
   }
 
@@ -124,92 +124,44 @@ function setServerInfo(uuid, pathAfterUUID, value) {
  */
 function getServerActivity(uuid) {
   var activity = {
-    rooms: {},
+    games: {},
   };
 
   if (uuid in servers) {
-    for (let roomKey in servers[uuid].rooms) {
-      activity.rooms[roomKey] = {
-        clients: {},
-        persistentObjects: Object.keys(
-          servers[uuid].rooms[roomKey].persistentObjects
-        ),
+    for (let gameId in servers[uuid].games) {
+      activity.games[gameId] = {
+        rooms: {},
       };
 
-      //update clients
-      //update clients
-      for (let clientKey in servers[uuid].rooms[roomKey].clients) {
-        activity.rooms[roomKey].clients[clientKey] = {
-          entities: Object.keys(
-            servers[uuid].rooms[roomKey].clients[clientKey].entities
+      for (let roomKey in servers[uuid].games[gameId].rooms) {
+        activity.games[gameId].rooms[roomKey] = {
+          clients: {},
+          persistentObjects: Object.keys(
+            servers[uuid].games[gameId].rooms[roomKey].persistentObjects
           ),
-          afk:
-            Date.now() -
-            servers[uuid].rooms[roomKey].clients[clientKey].lastPingAt,
         };
+
+        // update clients
+        for (let clientKey in servers[uuid].games[gameId].rooms[roomKey]
+          .clients) {
+          activity.games[gameId].rooms[roomKey].clients[clientKey] = {
+            entities: Object.keys(
+              servers[uuid].games[gameId].rooms[roomKey].clients[clientKey]
+                .entities
+            ),
+            afk:
+              Date.now() -
+              servers[uuid].games[gameId].rooms[roomKey].clients[clientKey]
+                .lastPingAt,
+          };
+        }
       }
     }
-
-    //activity is updated fully
+    // activity is updated fully
   }
 
   return activity;
 }
-
-/*
- * State Updates
- */
-function StateUpdate() {
-  for (let serverKey in servers) {
-    //in this server
-    for (let roomKey in servers[serverKey].rooms) {
-      //in this room
-      for (let clientKey in servers[serverKey].rooms[roomKey].clients) {
-        var stringToSend = {
-          eventName: "state_update",
-          clientId: parseInt(clientKey),
-          roomId: roomKey,
-          afk:
-            Date.now() -
-            servers[serverKey].rooms[roomKey].clients[clientKey].lastPingAt,
-          SP: servers[serverKey].rooms[roomKey].clients[clientKey]
-            .sharedProperties,
-          entities: JSON.stringify(
-            servers[serverKey].rooms[roomKey].clients[clientKey].entities
-          ), //EXPERIMENTAL
-        };
-        //console.log("string to send is");
-        //console.log(stringToSend);
-
-        if (!stringToSend.SP) {
-          break;
-        }
-
-        //DONT SEND STATE UPDATES FOR DEAD PLAYERS
-        if (
-          servers[serverKey].rooms[roomKey].clients[clientKey].socket.isClosed
-        ) {
-          break;
-        }
-
-        //send to other players
-        for (let otherClientKey in servers[serverKey].rooms[roomKey].clients) {
-          if (otherClientKey != clientKey) {
-            sendEventToClient(
-              stringToSend,
-              servers[serverKey].rooms[roomKey].clients[otherClientKey].socket
-            );
-          }
-        }
-
-        // servers[serverKey].rooms[roomKey].clients[clientKey]
-      }
-    }
-  }
-
-  setTimeout(StateUpdate, 1000 / 60);
-}
-// StateUpdate();
 
 // Substitution Cipher Encryption
 function substitutionEncrypt(message, key) {
@@ -277,8 +229,57 @@ class Server {
     this.serverId = serverId;
     this.maxClients = maxClients;
     this.frameRate = 60; // Default frame rate is 60 fps
-    this.rooms = {};
+    this.games = {}; // Dictionary to store Game instances
     this.stateUpdate();
+  }
+
+  addGame(gameId) {
+    const game = new Game(gameId);
+    this.games[gameId] = game;
+  }
+
+  addRoom(gameId, room) {
+    room.serverId = this.serverId;
+    this.games[gameId].addRoom(room);
+  }
+
+  NumberOfClientsOnthisServer() {
+    let count = 0;
+    for (let gameId in this.games) {
+      count += this.games[gameId].NumberOfClientsInGame();
+    }
+    return count;
+  }
+
+  RoomsCleanup() {
+    for (let gameId in this.games) {
+      this.games[gameId].RoomsCleanup();
+    }
+  }
+
+  getClientsInArray() {
+    let cArr = [];
+    for (let gameId in this.games) {
+      cArr = cArr.concat(this.games[gameId].getClientsInArray());
+    }
+    return cArr;
+  }
+
+  stateUpdate() {
+    // Your state update logic goes here
+    for (let gameId in this.games) {
+      this.games[gameId].stateUpdate();
+    }
+
+    // Use this.frameRate for the frame rate of this server
+    setTimeout(() => this.stateUpdate(), 1000 / this.frameRate);
+  }
+}
+
+class Game {
+  constructor(gameId) {
+    this.gameId = gameId;
+    this.rooms = {};
   }
 
   addRoom(room) {
@@ -286,17 +287,16 @@ class Server {
     this.rooms[room.roomId] = room;
   }
 
-  NumberOfClientsOnthisServer() {
-    var count = 0;
-    for (var key in this.rooms) {
-      var room = this.rooms[key];
-      count += Object.keys(room.clients).length;
+  NumberOfClientsInGame() {
+    let count = 0;
+    for (let key in this.rooms) {
+      count += Object.keys(this.rooms[key].clients).length;
     }
     return count;
   }
 
   RoomsCleanup() {
-    for (var key in this.rooms) {
+    for (let key in this.rooms) {
       if (
         Object.keys(this.rooms[key].clients).length == 0 &&
         Object.keys(this.rooms[key].persistentObjects).length == 0
@@ -307,8 +307,8 @@ class Server {
   }
 
   getClientsInArray() {
-    var cArr = [];
-    for (var roomKey in this.rooms) {
+    let cArr = [];
+    for (let roomKey in this.rooms) {
       cArr = cArr.concat(this.rooms[roomKey].getClientsInArray());
     }
     return cArr;
@@ -347,28 +347,19 @@ class Server {
         }
       }
     }
-
-    // Use this.frameRate for the frame rate of this server
-    setTimeout(() => this.stateUpdate(), 1000 / this.frameRate);
   }
 }
 
 class Room {
   constructor(roomId) {
-    //the main fucking constructor
+    // the main constructor
     this.roomId = roomId;
   }
-  serverId = -111111; //the server id that this room belongs to
+  serverId = -111111; // the server id that this room belongs to
 
-  clients = {
-    //an empty dictionary
-    //all clients can go here
-  };
+  clients = {}; // an empty dictionary, all clients can go here
 
-  persistentObjects = {
-    //an empty dictionary
-    //all persistent objects can go here
-  };
+  persistentObjects = {}; // an empty dictionary, all persistent objects can go here
 
   addClient(client) {
     client.roomId = this.roomId;
@@ -384,7 +375,7 @@ class Room {
           delete this.clients[key];
           UpdateServerInfoOnFirebase(thisServerId);
 
-          //tell others in this room that this guy is gone
+          // tell others in this room that this guy is gone
           for (var clientKey in this.clients) {
             sendEventToClient(
               {
@@ -394,7 +385,7 @@ class Room {
               this.clients[clientKey].socket
             );
           }
-          //revise pseudohost
+          // revise pseudohost
           this.revisePseudoHost();
         }
       }
@@ -473,12 +464,13 @@ class Room {
     return foundPseudoHostKey;
   }
 }
+
 class Client {
   constructor(ws) {
     this.socket = ws;
   }
-  roomId = -167; //the room that this belongs to
-  clientId = ++clientId; //CAN REMOVE THE  ++
+  roomId = -167; // the room that this belongs to
+  clientId = ++clientId;
 
   sharedProperties = "";
   isPseudoHost = false;
@@ -493,6 +485,7 @@ class PersistentObject {
     this.sharedProperties = sharedProperties;
   }
 }
+
 // Function to override console.log
 function customLog(log, serverId = "default") {
   // Original console.log behavior
@@ -515,6 +508,7 @@ function customLog(log, serverId = "default") {
   }
 }
 console.log = customLog;
+
 wss.on("connection", (ws) => {
   //stuff we want to happen after player connects goes down here
   console.log("someone connected");
@@ -604,12 +598,23 @@ wss.on("connection", (ws) => {
 
     switch (realData.eventName) {
       case "join_server":
-        //VALIDATIONS
+        // VALIDATIONS
+
+        if (!realData.gameId) {
+          realData.gameId = "default";
+        }
 
         if (typeof realData.serverId != "string") {
           break;
         } else {
           if (realData.serverId.length > 100) {
+            break;
+          }
+        }
+        if (typeof realData.gameId != "string") {
+          break;
+        } else {
+          if (realData.gameId.length > 100) {
             break;
           }
         }
@@ -620,21 +625,25 @@ wss.on("connection", (ws) => {
         } else {
           ws.useCiphering = false;
         }
-        //check if this is a real uid/serverid or not
+        // check if this is a real uid/serverid or not
         const hashOfUUID = realData.serverId;
         let providedUid = "";
         console.log(hashOfUUID);
         if (realData.serverId.length == 32) {
           console.log("length is");
           console.log(realData.serverId.length);
-          //this is a hash
+          // this is a hash
           providedUid = await hashToUUIDfromFirebase(hashOfUUID);
-          //attach the uuid to the websocket
+          // attach the uuid to the websocket
           ws.uuid = providedUid;
+          //attach gameid too
+          ws.gameId = realData.gameId;
         } else {
-          //this is not hashed
+          // this is not hashed
           ws.uuid = realData.serverId;
           providedUid = ws.uuid;
+          //attach gameid
+          ws.gameId = realData.gameId;
         }
         console.log("Someone wants to join your server", ws.uuid);
         var serverInfo = await getServerInfo(ws.uuid);
@@ -642,13 +651,13 @@ wss.on("connection", (ws) => {
         console.log(serverInfo, ws.uuid);
 
         if (serverInfo != -1) {
-          //the provided uid is real
-          //check if this server is already there in servers dict
+          // the provided uid is real
+          // check if this server is already there in servers dict
           if (providedUid in servers) {
-            //this server is already running
-            servers[providedUid].maxClients = serverInfo.maxClients; //update maxclients everytime someone joins
+            // this server is already running
+            servers[providedUid].maxClients = serverInfo.maxClients; // update maxclients everytime someone joins
 
-            //CHECK HOW MANY CLIENTS ARE THERE HERE !!!! ONLY if less than maxclients you can allow
+            // CHECK HOW MANY CLIENTS ARE THERE HERE !!!! ONLY if less than maxclients you can allow
             if (
               servers[providedUid].NumberOfClientsOnthisServer() <
               serverInfo.maxClients
@@ -662,13 +671,19 @@ wss.on("connection", (ws) => {
                 ws.uuid
               );
 
-              var client = new Client(ws); //create client
-              var room = new Room(client.clientId); //make personal room for client
-              room.addClient(client); //add client here
+              var client = new Client(ws); // create client
+              var room = new Room(client.clientId); // make personal room for client
+              room.addClient(client); // add client here
 
-              servers[providedUid].addRoom(room); //add room to server
+              // Check if the server has a specific game, if not, create a new game
+              var gameId = realData.gameId;
+              if (!(gameId in servers[providedUid].games)) {
+                servers[providedUid].addGame(gameId);
+              }
 
-              //Tell this clent we created you
+              servers[providedUid].addRoom(gameId, room); // add room to server
+
+              // Tell this client we created you
               sendEventToClient(
                 {
                   eventName: "created_you",
@@ -689,24 +704,30 @@ wss.on("connection", (ws) => {
                 sendAlertToClient(
                   ws,
                   "show",
-                  " You Server has reached maximum client capacity! Please upgrade your plan."
+                  " Your Server has reached maximum client capacity! Please upgrade your plan."
                 );
               }
             }
           } else {
             console.log("Creating new server on nodejs.", ws.uuid);
-            //this server needs to be just started
+            // this server needs to be just started
 
             var newServer = new Server(providedUid, serverInfo.maxClients);
             servers[providedUid] = newServer;
 
-            var client = new Client(ws); //create client
-            var room = new Room(client.clientId); //make personal room for client
-            room.addClient(client); //add client here
+            var client = new Client(ws); // create client
+            var room = new Room(client.clientId); // make personal room for client
+            room.addClient(client); // add client here
 
-            newServer.addRoom(room); //add room to server
+            // Check if the server has a specific game, if not, create a new game
+            var gameId = realData.gameId || "default";
+            if (!(gameId in servers[providedUid].games)) {
+              servers[providedUid].addGame(gameId);
+            }
 
-            //Tell this clent we created you
+            servers[providedUid].addRoom(gameId, room); // add room to server
+
+            // Tell this client we created you
             sendEventToClient(
               {
                 eventName: "created_you",
@@ -722,7 +743,7 @@ wss.on("connection", (ws) => {
             getServerActivity(providedUid)
           );
         } else {
-          //invalid uid
+          // invalid uid
           console.log("INVALID USER ID", ws.uuid);
           sendAlertToClient(
             ws,
@@ -731,20 +752,28 @@ wss.on("connection", (ws) => {
           );
         }
 
-        //console.log(servers);
+        // console.log(servers);
 
         break;
 
       case "change_room":
+        // linked the gameId of every websocket to ws.gameId, so use that and don't need to validate it because it was already validated at first
         var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
         var submittedRoomId = realData.roomId;
+        var submittedGameId = ws.gameId; // added to retrieve gameId from the websocket
 
-        if (submittedClientId && submittedRoomId && submittedServerId) {
+        if (
+          submittedClientId &&
+          submittedRoomId &&
+          submittedServerId &&
+          submittedGameId
+        ) {
           if (
             typeof submittedClientId == "number" &&
             typeof submittedRoomId == "string" &&
-            typeof submittedServerId == "string"
+            typeof submittedServerId == "string" &&
+            typeof submittedGameId == "string" // added validation for gameId
           ) {
             console.log(
               "Got a Room Change Request. from" +
@@ -752,12 +781,12 @@ wss.on("connection", (ws) => {
                 "Room Change validation done",
               ws.uuid
             );
-            //All validations done
+            // All validations done
             if (submittedRoomId.trim().length == 0) {
               break;
             }
 
-            //good letters check
+            // good letters check
             var goodLetters = true;
             for (let letter in submittedRoomId) {
               var allowedLetters =
@@ -776,9 +805,9 @@ wss.on("connection", (ws) => {
             var roomAlreadyExists = false;
             var thisClientInstance = -1;
             if (submittedServerId in servers) {
-              //if this is a real server id
+              // if this is a real server id
 
-              //Room Change Allowance
+              // Room Change Allowance
               var allowRoomChange = false;
               var parsedInt = parseInt(submittedRoomId);
               console.log("parsedint is");
@@ -803,23 +832,26 @@ wss.on("connection", (ws) => {
               console.log("Room change allowed?", ws.uuid);
               console.log(allowRoomChange, ws.uuid);
               if (allowRoomChange) {
-                for (roomKey in servers[submittedServerId].rooms) {
-                  //scout all rooms and remove this guy
+                for (roomKey in servers[submittedServerId].games[
+                  submittedGameId
+                ].rooms) {
+                  // scout all rooms and remove this guy
                   if (
                     submittedClientId in
-                    servers[submittedServerId].rooms[roomKey].clients
+                    servers[submittedServerId].games[submittedGameId].rooms[
+                      roomKey
+                    ].clients
                   ) {
                     thisClientInstance =
-                      servers[submittedServerId].rooms[roomKey].clients[
-                        submittedClientId
-                      ];
+                      servers[submittedServerId].games[submittedGameId].rooms[
+                        roomKey
+                      ].clients[submittedClientId];
                     console.log(
                       "Found this client in some room and removing from there",
                       ws.uuid
                     );
-                    delete servers[submittedServerId].rooms[roomKey].clients[
-                      submittedClientId
-                    ]; //remove this client
+                    delete servers[submittedServerId].games[submittedGameId]
+                      .rooms[roomKey].clients[submittedClientId]; // remove this client
                   }
 
                   var thisRoomName = roomKey;
@@ -828,38 +860,41 @@ wss.on("connection", (ws) => {
                   }
                 }
 
-                //tell everyone in this room that this guy is gone
-                for (var clientKey in servers[submittedServerId].rooms[
-                  thisClientInstance.roomId
-                ].clients) {
+                // tell everyone in this room that this guy is gone
+                for (var clientKey in servers[submittedServerId].games[
+                  submittedGameId
+                ].rooms[thisClientInstance.roomId].clients) {
                   sendEventToClient(
                     {
                       eventName: "destroy_player",
                       clientId: parseInt(submittedClientId),
                     },
-                    servers[submittedServerId].rooms[thisClientInstance.roomId]
-                      .clients[clientKey].socket
+                    servers[submittedServerId].games[submittedGameId].rooms[
+                      thisClientInstance.roomId
+                    ].clients[clientKey].socket
                   );
                 }
 
-                //add user to desired room
+                // add user to desired room
                 if (thisClientInstance != -1) {
                   if (roomAlreadyExists) {
                     console.log("Desired room already exists");
-                    //room exists already
+                    // room exists already
 
-                    //add the client
-                    servers[submittedServerId].rooms[submittedRoomId].addClient(
-                      thisClientInstance
-                    );
-                    //pseudohost logic - time when client joined
-                    servers[submittedServerId].rooms[submittedRoomId].clients[
-                      submittedClientId
-                    ].joinedAt = Date.now();
+                    // add the client
+                    servers[submittedServerId].games[submittedGameId].rooms[
+                      submittedRoomId
+                    ].addClient(thisClientInstance);
+                    // pseudohost logic - time when client joined
+                    servers[submittedServerId].games[submittedGameId].rooms[
+                      submittedRoomId
+                    ].clients[submittedClientId].joinedAt = Date.now();
 
-                    //tell this client about all other persistent objects in the room
+                    // tell this client about all other persistent objects in the room
                     var thisRoom =
-                      servers[submittedServerId].rooms[submittedRoomId];
+                      servers[submittedServerId].games[submittedGameId].rooms[
+                        submittedRoomId
+                      ];
 
                     for (let persistentObjectId in thisRoom.persistentObjects) {
                       sendEventToClient(
@@ -874,19 +909,20 @@ wss.on("connection", (ws) => {
                       );
                     }
                   } else {
-                    //room does not exist yet
+                    // room does not exist yet
                     console.log("Desired room does not exist yet", ws.uuid);
-                    var room = new Room(submittedRoomId); //make room with given details
-                    room.addClient(thisClientInstance); //add client here
+                    var room = new Room(submittedRoomId); // make room with given details
+                    room.addClient(thisClientInstance); // add client here
 
-                    //pseudohost logic - joinedat
+                    // pseudohost logic - joinedat
 
                     room.clients[submittedClientId].joinedAt = Date.now();
 
-                    servers[submittedServerId].addRoom(room); //add room to server
+                    servers[submittedServerId].games[submittedGameId].addRoom(
+                      room
+                    ); // add room to server
                   }
                 }
-                //servers[submittedServerId].rooms[submittedRoomId].clients[submittedClientId]
 
                 sendEventToClient(
                   {
@@ -895,15 +931,15 @@ wss.on("connection", (ws) => {
                   },
                   ws
                 );
-                //every time there is a room change revise pseudohost
-                servers[submittedServerId].rooms[
+                // every time there is a room change revise pseudohost
+                servers[submittedServerId].games[submittedGameId].rooms[
                   submittedRoomId
                 ].revisePseudoHost();
 
                 UpdateServerInfoOnFirebase(submittedServerId);
               }
             } else {
-              //invalid uid
+              // invalid uid
               console.log("INVALID USER ID", ws.uuid);
               sendAlertToClient(
                 ws,
@@ -920,36 +956,48 @@ wss.on("connection", (ws) => {
         var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
         var submittedSharedPropeties = realData.sharedProperties;
+        var submittedGameId = ws.gameId; // added to retrieve gameId from the websocket
+
         if (
           submittedClientId &&
           submittedSharedPropeties &&
-          submittedServerId
+          submittedServerId &&
+          submittedGameId
         ) {
           if (
             typeof submittedClientId == "number" &&
             typeof submittedServerId == "string" &&
-            typeof submittedSharedPropeties == "string"
+            typeof submittedSharedPropeties == "string" &&
+            typeof submittedGameId == "string" // added validation for gameId
           ) {
-            //fully validated
+            // fully validated
 
-            if (submittedServerId in servers) {
-              for (var roomKey in servers[submittedServerId].rooms) {
-                for (var clientKey in servers[submittedServerId].rooms[roomKey]
-                  .clients) {
+            if (
+              submittedServerId in servers &&
+              submittedGameId in servers[submittedServerId].games
+            ) {
+              for (var roomKey in servers[submittedServerId].games[
+                submittedGameId
+              ].rooms) {
+                for (var clientKey in servers[submittedServerId].games[
+                  submittedGameId
+                ].rooms[roomKey].clients) {
                   if (
-                    servers[submittedServerId].rooms[roomKey].clients[clientKey]
-                      .clientId == submittedClientId
+                    servers[submittedServerId].games[submittedGameId].rooms[
+                      roomKey
+                    ].clients[clientKey].clientId == submittedClientId
                   ) {
-                    //we have found this client.
-                    //just update the sharedproperties
-                    servers[submittedServerId].rooms[roomKey].clients[
-                      clientKey
-                    ].sharedProperties = submittedSharedPropeties;
+                    // we have found this client.
+                    // just update the sharedproperties
+                    servers[submittedServerId].games[submittedGameId].rooms[
+                      roomKey
+                    ].clients[clientKey].sharedProperties =
+                      submittedSharedPropeties;
                   }
                 }
               }
             } else {
-              //invalid uid
+              // invalid uid
               console.log(
                 "submitted server id is" + submittedServerId,
                 ws.uuid
@@ -968,40 +1016,50 @@ wss.on("connection", (ws) => {
         }
 
         break;
-
       case "entity_state_update":
         var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
         var submittedEntityProperties = realData.entityP;
         var submittedEntityId = realData.entityId;
+        var submittedGameId = ws.gameId; // added to retrieve gameId from the websocket
+
         if (
           submittedClientId &&
           submittedEntityProperties &&
           submittedEntityId &&
-          submittedServerId
+          submittedServerId &&
+          submittedGameId
         ) {
           if (
             typeof submittedClientId == "number" &&
             typeof submittedEntityId == "number" &&
             typeof submittedServerId == "string" &&
-            typeof submittedEntityProperties == "string"
+            typeof submittedEntityProperties == "string" &&
+            typeof submittedGameId == "string" // added validation for gameId
           ) {
-            //fully validated
+            // fully validated
 
-            if (submittedServerId in servers) {
-              for (var roomKey in servers[submittedServerId].rooms) {
-                for (var clientKey in servers[submittedServerId].rooms[roomKey]
-                  .clients) {
+            if (
+              submittedServerId in servers &&
+              submittedGameId in servers[submittedServerId].games
+            ) {
+              for (var roomKey in servers[submittedServerId].games[
+                submittedGameId
+              ].rooms) {
+                for (var clientKey in servers[submittedServerId].games[
+                  submittedGameId
+                ].rooms[roomKey].clients) {
                   if (
-                    servers[submittedServerId].rooms[roomKey].clients[clientKey]
-                      .clientId == submittedClientId
+                    servers[submittedServerId].games[submittedGameId].rooms[
+                      roomKey
+                    ].clients[clientKey].clientId == submittedClientId
                   ) {
-                    //we have found this client.
-                    //just update the entity
+                    // we have found this client.
+                    // just update the entity
                     var currentNumberOfEntities = Object.keys(
-                      servers[submittedServerId].rooms[roomKey].clients[
-                        clientKey
-                      ].entities
+                      servers[submittedServerId].games[submittedGameId].rooms[
+                        roomKey
+                      ].clients[clientKey].entities
                     ).length;
                     console.log(
                       "Total entities on client id " +
@@ -1023,14 +1081,15 @@ wss.on("connection", (ws) => {
                       );
                       return;
                     }
-                    servers[submittedServerId].rooms[roomKey].clients[
-                      clientKey
-                    ].entities[submittedEntityId] = submittedEntityProperties;
+                    servers[submittedServerId].games[submittedGameId].rooms[
+                      roomKey
+                    ].clients[clientKey].entities[submittedEntityId] =
+                      submittedEntityProperties;
                   }
                 }
               }
             } else {
-              //invalid uid
+              // invalid uid
               console.log(
                 "submitted server id is" + submittedServerId,
                 ws.uuid
@@ -1050,54 +1109,68 @@ wss.on("connection", (ws) => {
 
         break;
 
+      // SMTC event
       case "SMTC":
         var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
         var submittedReceiverClientId = realData.RclientId;
         var submittedMessage = realData.message;
+        var submittedGameId = ws.gameId; // added to retrieve gameId from the websocket
+
         if (
           submittedClientId &&
           submittedServerId &&
           submittedReceiverClientId &&
-          submittedMessage
+          submittedMessage &&
+          submittedGameId
         ) {
           if (
             typeof submittedClientId == "number" &&
             typeof submittedReceiverClientId == "number" &&
             typeof submittedServerId == "string" &&
-            typeof submittedMessage == "string"
+            typeof submittedMessage == "string" &&
+            typeof submittedGameId == "string" // added validation for gameId
           ) {
-            //fully validated
+            // fully validated
             console.log("Got a Send message request", ws.uuid);
             console.log(realData, ws.uuid);
 
-            if (submittedServerId in servers) {
-              for (var roomKey in servers[submittedServerId].rooms) {
-                for (var clientKey in servers[submittedServerId].rooms[roomKey]
-                  .clients) {
+            if (
+              submittedServerId in servers &&
+              submittedGameId in servers[submittedServerId].games
+            ) {
+              for (var roomKey in servers[submittedServerId].games[
+                submittedGameId
+              ].rooms) {
+                for (var clientKey in servers[submittedServerId].games[
+                  submittedGameId
+                ].rooms[roomKey].clients) {
                   if (
-                    servers[submittedServerId].rooms[roomKey].clients[clientKey]
-                      .clientId == submittedClientId
+                    servers[submittedServerId].games[submittedGameId].rooms[
+                      roomKey
+                    ].clients[clientKey].clientId == submittedClientId
                   ) {
-                    //we have found this client.
-                    // now send message to reciever
-                    for (var roomKey2 in servers[submittedServerId].rooms) {
-                      //in all rooms
+                    // we have found this client.
+                    // now send message to receiver
+                    for (var roomKey2 in servers[submittedServerId].games[
+                      submittedGameId
+                    ].rooms) {
+                      // in all rooms
                       if (
-                        servers[submittedServerId].rooms[roomKey2].clients[
-                          submittedReceiverClientId
-                        ]
+                        servers[submittedServerId].games[submittedGameId].rooms[
+                          roomKey2
+                        ].clients[submittedReceiverClientId]
                       ) {
-                        //if the reciever is in this room
+                        // if the receiver is in this room
                         sendEventToClient(
                           {
                             eventName: "SMTC",
                             message: submittedMessage,
                             senderClientId: submittedClientId,
                           },
-                          servers[submittedServerId].rooms[roomKey2].clients[
-                            submittedReceiverClientId
-                          ].socket
+                          servers[submittedServerId].games[submittedGameId]
+                            .rooms[roomKey2].clients[submittedReceiverClientId]
+                            .socket
                         );
                         console.log("Sent the message.", ws.uuid);
                       }
@@ -1106,13 +1179,13 @@ wss.on("connection", (ws) => {
                 }
               }
             } else {
-              //invalid uid
+              // invalid uid
               console.log(
                 "submitted server id is" + submittedServerId,
                 ws.uuid
               );
               console.log(
-                "INVALID USER ID in state update or net yet created this customer's server on node",
+                "INVALID USER ID in state update or not yet created this customer's server on node",
                 ws.uuid
               );
               sendAlertToClient(
@@ -1126,48 +1199,62 @@ wss.on("connection", (ws) => {
 
         break;
 
+      // SETC event
       case "SETC":
         var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
         var submittedReceiverClientId = realData.RclientId;
         var submittedMessage = realData.message;
         var submittedEvent = realData.event;
+        var submittedGameId = ws.gameId; // added to retrieve gameId from the websocket
+
         if (
           submittedClientId &&
           submittedServerId &&
           submittedReceiverClientId &&
           submittedMessage &&
-          submittedEvent
+          submittedEvent &&
+          submittedGameId
         ) {
           if (
             typeof submittedClientId == "number" &&
             typeof submittedReceiverClientId == "number" &&
             typeof submittedServerId == "string" &&
             typeof submittedMessage == "string" &&
-            typeof submittedEvent == "string"
+            typeof submittedEvent == "string" &&
+            typeof submittedGameId == "string" // added validation for gameId
           ) {
-            //fully validated
+            // fully validated
             console.log("Got a Send Event request", ws.uuid);
             console.log(realData, ws.uuid);
 
-            if (submittedServerId in servers) {
-              for (var roomKey in servers[submittedServerId].rooms) {
-                for (var clientKey in servers[submittedServerId].rooms[roomKey]
-                  .clients) {
+            if (
+              submittedServerId in servers &&
+              submittedGameId in servers[submittedServerId].games
+            ) {
+              for (var roomKey in servers[submittedServerId].games[
+                submittedGameId
+              ].rooms) {
+                for (var clientKey in servers[submittedServerId].games[
+                  submittedGameId
+                ].rooms[roomKey].clients) {
                   if (
-                    servers[submittedServerId].rooms[roomKey].clients[clientKey]
-                      .clientId == submittedClientId
+                    servers[submittedServerId].games[submittedGameId].rooms[
+                      roomKey
+                    ].clients[clientKey].clientId == submittedClientId
                   ) {
-                    //we have found this client.
-                    // now send message to reciever
-                    for (var roomKey2 in servers[submittedServerId].rooms) {
-                      //in all rooms
+                    // we have found this client.
+                    // now send message to receiver
+                    for (var roomKey2 in servers[submittedServerId].games[
+                      submittedGameId
+                    ].rooms) {
+                      // in all rooms
                       if (
-                        servers[submittedServerId].rooms[roomKey2].clients[
-                          submittedReceiverClientId
-                        ]
+                        servers[submittedServerId].games[submittedGameId].rooms[
+                          roomKey2
+                        ].clients[submittedReceiverClientId]
                       ) {
-                        //if the reciever is in this room
+                        // if the receiver is in this room
                         sendEventToClient(
                           {
                             eventName: "SETC",
@@ -1175,9 +1262,9 @@ wss.on("connection", (ws) => {
                             event: submittedEvent,
                             senderClientId: submittedClientId,
                           },
-                          servers[submittedServerId].rooms[roomKey2].clients[
-                            submittedReceiverClientId
-                          ].socket
+                          servers[submittedServerId].games[submittedGameId]
+                            .rooms[roomKey2].clients[submittedReceiverClientId]
+                            .socket
                         );
                         console.log("Sent the event.", ws.uuid);
                       }
@@ -1186,13 +1273,13 @@ wss.on("connection", (ws) => {
                 }
               }
             } else {
-              //invalid uid
+              // invalid uid
               console.log(
                 "submitted server id is" + submittedServerId,
                 ws.uuid
               );
               console.log(
-                "INVALID USER ID in state update or net yet created this customer's server on node",
+                "INVALID USER ID in state update or not yet created this customer's server on node",
                 ws.uuid
               );
               sendAlertToClient(
@@ -1209,42 +1296,57 @@ wss.on("connection", (ws) => {
       case "destroy_entity":
         var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
-
         var submittedEntityId = realData.entityId;
-        if (submittedClientId && submittedEntityId && submittedServerId) {
+        var submittedGameId = ws.gameId; // added to retrieve gameId from the websocket
+
+        if (
+          submittedClientId &&
+          submittedEntityId &&
+          submittedServerId &&
+          submittedGameId
+        ) {
           if (
             typeof submittedClientId == "number" &&
             typeof submittedEntityId == "number" &&
-            typeof submittedServerId == "string"
+            typeof submittedServerId == "string" &&
+            typeof submittedGameId == "string" // added validation for gameId
           ) {
-            //fully validated
+            // fully validated
             console.log("An Entity has to be destroyed ", ws.uuid);
 
-            if (submittedServerId in servers) {
-              for (var roomKey in servers[submittedServerId].rooms) {
-                for (var clientKey in servers[submittedServerId].rooms[roomKey]
-                  .clients) {
+            if (
+              submittedServerId in servers &&
+              submittedGameId in servers[submittedServerId].games
+            ) {
+              for (var roomKey in servers[submittedServerId].games[
+                submittedGameId
+              ].rooms) {
+                for (var clientKey in servers[submittedServerId].games[
+                  submittedGameId
+                ].rooms[roomKey].clients) {
                   if (
-                    servers[submittedServerId].rooms[roomKey].clients[clientKey]
-                      .clientId == submittedClientId
+                    servers[submittedServerId].games[submittedGameId].rooms[
+                      roomKey
+                    ].clients[clientKey].clientId == submittedClientId
                   ) {
-                    //we have found this client.
-                    //just delete the entity
-                    delete servers[submittedServerId].rooms[roomKey].clients[
-                      clientKey
-                    ].entities[submittedEntityId];
+                    // we have found this client.
+                    // just delete the entity
+                    delete servers[submittedServerId].games[submittedGameId]
+                      .rooms[roomKey].clients[clientKey].entities[
+                      submittedEntityId
+                    ];
                     console.log("Deleting the entity if it exists...", ws.uuid);
                   }
                 }
               }
             } else {
-              //invalid uid
+              // invalid uid
               console.log(
                 "submitted server id is" + submittedServerId,
                 ws.uuid
               );
               console.log(
-                "INVALID USER ID in state update or net yet created this customer's server on node",
+                "INVALID USER ID in state update or not yet created this customer's server on node",
                 ws.uuid
               );
               sendAlertToClient(
@@ -1260,9 +1362,17 @@ wss.on("connection", (ws) => {
 
       case "show_all_rooms":
         var submittedServerId = ws.uuid;
-        if (submittedServerId) {
-          if (typeof submittedServerId == "string") {
-            if (submittedServerId in servers) {
+        var submittedGameId = ws.gameId; // added to retrieve gameId from the websocket
+
+        if (submittedServerId && submittedGameId) {
+          if (
+            typeof submittedServerId == "string" &&
+            typeof submittedGameId == "string"
+          ) {
+            if (
+              submittedServerId in servers &&
+              submittedGameId in servers[submittedServerId].games
+            ) {
               console.log(
                 "Getting all Rooms for a show rooms request",
                 ws.uuid
@@ -1270,12 +1380,14 @@ wss.on("connection", (ws) => {
               sendEventToClient(
                 {
                   eventName: "all_rooms",
-                  rooms: Object.keys(servers[submittedServerId].rooms),
+                  rooms: Object.keys(
+                    servers[submittedServerId].games[submittedGameId].rooms
+                  ),
                 },
                 ws
               );
             } else {
-              //invalid uid
+              // invalid uid
               console.log("INVALID USER ID", ws.uuid);
               sendAlertToClient(
                 ws,
@@ -1289,13 +1401,24 @@ wss.on("connection", (ws) => {
 
       case "show_all_clients_in_room":
         var submittedServerId = ws.uuid;
-        if (submittedServerId) {
-          if (typeof submittedServerId == "string") {
-            if (submittedServerId in servers) {
+        var submittedGameId = ws.gameId; // added to retrieve gameId from the websocket
+
+        if (submittedServerId && submittedGameId) {
+          if (
+            typeof submittedServerId == "string" &&
+            typeof submittedGameId == "string"
+          ) {
+            if (
+              submittedServerId in servers &&
+              submittedGameId in servers[submittedServerId].games
+            ) {
               var submittedRoomId = realData.roomName;
               if (typeof submittedRoomId == "string") {
                 if (submittedRoomId.length != 0) {
-                  if (submittedRoomId in servers[submittedServerId].rooms) {
+                  if (
+                    submittedRoomId in
+                    servers[submittedServerId].games[submittedGameId].rooms
+                  ) {
                     console.log(
                       "Getting all client in room " +
                         submittedRoomId +
@@ -1306,15 +1429,15 @@ wss.on("connection", (ws) => {
                       {
                         eventName: "all_clients",
                         clients: Object.keys(
-                          servers[submittedServerId].rooms[submittedRoomId]
-                            .clients
+                          servers[submittedServerId].games[submittedGameId]
+                            .rooms[submittedRoomId].clients
                         ),
                         roomId: submittedRoomId,
                       },
                       ws
                     );
                   } else {
-                    //room does not exist on this server
+                    // room does not exist on this server
                     sendEventToClient(
                       {
                         eventName: "all_clients",
@@ -1326,8 +1449,8 @@ wss.on("connection", (ws) => {
                 }
               }
             } else {
-              //invalid uid
-              console.log("INVALID USER ID");
+              // invalid uid
+              console.log("INVALID USER ID", ws.uuid);
               sendAlertToClient(
                 ws,
                 "show",
@@ -1340,13 +1463,24 @@ wss.on("connection", (ws) => {
 
       case "show_pO_in_room":
         var submittedServerId = ws.uuid;
-        if (submittedServerId) {
-          if (typeof submittedServerId == "string") {
-            if (submittedServerId in servers) {
+        var submittedGameId = ws.gameId; // added to retrieve gameId from the websocket
+
+        if (submittedServerId && submittedGameId) {
+          if (
+            typeof submittedServerId == "string" &&
+            typeof submittedGameId == "string"
+          ) {
+            if (
+              submittedServerId in servers &&
+              submittedGameId in servers[submittedServerId].games
+            ) {
               var submittedRoomId = realData.roomName;
               if (typeof submittedRoomId == "string") {
                 if (submittedRoomId.length != 0) {
-                  if (submittedRoomId in servers[submittedServerId].rooms) {
+                  if (
+                    submittedRoomId in
+                    servers[submittedServerId].games[submittedGameId].rooms
+                  ) {
                     console.log(
                       "Getting all Persistent objects in room for a show PO req",
                       ws.uuid
@@ -1355,17 +1489,17 @@ wss.on("connection", (ws) => {
                       {
                         eventName: "all_pO",
                         pOs: Object.keys(
-                          servers[submittedServerId].rooms[submittedRoomId]
-                            .persistentObjects
+                          servers[submittedServerId].games[submittedGameId]
+                            .rooms[submittedRoomId].persistentObjects
                         ),
                         roomId: submittedRoomId,
                       },
                       ws
                     );
                   } else {
-                    //room does not exist on this server
+                    // room does not exist on this server
                     console.log(
-                      "Tried to get all Persistent objects in room for a show PO req, but the room didnt exist",
+                      "Tried to get all Persistent objects in room for a show PO req, but the room didn't exist",
                       ws.uuid
                     );
                     sendEventToClient(
@@ -1380,7 +1514,7 @@ wss.on("connection", (ws) => {
                 }
               }
             } else {
-              //invalid uid
+              // invalid uid
               console.log("INVALID USER ID", ws.uuid);
               sendAlertToClient(
                 ws,
@@ -1394,26 +1528,31 @@ wss.on("connection", (ws) => {
 
       case "disconnect":
         var submittedServerId = ws.uuid;
-        for (roomKey in servers[submittedServerId].rooms) {
-          //scout all rooms and remove this guy
+        var submittedGameId = ws.gameId; // added to retrieve gameId from the websocket
+
+        for (roomKey in servers[submittedServerId].games[submittedGameId]
+          .rooms) {
+          // scout all rooms and remove this guy
           if (
             submittedClientId in
-            servers[submittedServerId].rooms[roomKey].clients
+            servers[submittedServerId].games[submittedGameId].rooms[roomKey]
+              .clients
           ) {
             thisClientInstance =
-              servers[submittedServerId].rooms[roomKey].clients[
-                submittedClientId
-              ];
+              servers[submittedServerId].games[submittedGameId].rooms[roomKey]
+                .clients[submittedClientId];
             console.log(
               "A guy disconnected. Found this guy in some room and removing him",
               ws.uuid
             );
 
-            delete servers[submittedServerId].rooms[roomKey].clients[
-              submittedClientId
-            ]; //remove this client
-            //revise pseudo host
-            servers[submittedServerId].rooms[roomKey].revisePseudoHost();
+            delete servers[submittedServerId].games[submittedGameId].rooms[
+              roomKey
+            ].clients[submittedClientId]; // remove this client
+            // revise pseudo host
+            servers[submittedServerId].games[submittedGameId].rooms[
+              roomKey
+            ].revisePseudoHost();
           }
         }
 
@@ -1442,15 +1581,25 @@ wss.on("connection", (ws) => {
         try {
           var submittedServerId = ws.uuid;
           var submittedClientId = realData.clientId;
+          var submittedGameId = ws.gameId; // added to retrieve gameId from the websocket
 
           if (
             typeof submittedServerId === "string" &&
-            typeof submittedClientId === "number"
+            typeof submittedClientId === "number" &&
+            typeof submittedGameId === "string"
           ) {
-            if (submittedServerId in servers) {
+            if (
+              submittedServerId in servers &&
+              submittedGameId in servers[submittedServerId].games
+            ) {
               // Iterate through rooms
-              for (let roomKey in servers[submittedServerId].rooms) {
-                const room = servers[submittedServerId].rooms[roomKey];
+              for (let roomKey in servers[submittedServerId].games[
+                submittedGameId
+              ].rooms) {
+                const room =
+                  servers[submittedServerId].games[submittedGameId].rooms[
+                    roomKey
+                  ];
 
                 // Check if the client is in the current room
                 if (submittedClientId in room.clients) {
@@ -1485,20 +1634,32 @@ wss.on("connection", (ws) => {
         var submittedServerId = ws.uuid;
         var submittedRoomId = realData.roomId;
         var submittedPersistentObjectProperties = realData.pOp;
+        var submittedGameId = ws.gameId; // added to retrieve gameId from the websocket
+
         if (
           submittedPersistentObjectProperties &&
           submittedRoomId &&
-          submittedServerId
+          submittedServerId &&
+          submittedGameId
         ) {
           if (
             typeof submittedRoomId == "string" &&
             typeof submittedServerId == "string" &&
-            typeof submittedPersistentObjectProperties == "string"
+            typeof submittedPersistentObjectProperties == "string" &&
+            typeof submittedGameId == "string"
           ) {
-            if (submittedServerId in servers) {
+            if (
+              submittedServerId in servers &&
+              submittedGameId in servers[submittedServerId].games
+            ) {
               var totalPersistentObjects = 0;
-              for (let roomKey in servers[submittedServerId].rooms) {
-                var room = servers[submittedServerId].rooms[roomKey];
+              for (let roomKey in servers[submittedServerId].games[
+                submittedGameId
+              ].rooms) {
+                var room =
+                  servers[submittedServerId].games[submittedGameId].rooms[
+                    roomKey
+                  ];
                 totalPersistentObjects += Object.keys(
                   room.persistentObjects
                 ).length;
@@ -1521,7 +1682,7 @@ wss.on("connection", (ws) => {
                 sendAlertToClient(
                   ws,
                   "show",
-                  " You Server has reached maximum PERSISTENT OBJECT capacity! Please upgrade your plan."
+                  " Your Server has reached maximum PERSISTENT OBJECT capacity! Please upgrade your plan."
                 );
                 return;
               }
@@ -1545,7 +1706,11 @@ wss.on("connection", (ws) => {
               }
 
               var roomAlreadyExists = false;
-              if (servers[submittedServerId].rooms[submittedRoomId]) {
+              if (
+                servers[submittedServerId].games[submittedGameId].rooms[
+                  submittedRoomId
+                ]
+              ) {
                 roomAlreadyExists = true;
               }
 
@@ -1573,12 +1738,14 @@ wss.on("connection", (ws) => {
                 if (roomAlreadyExists) {
                   console.log("Desired room already exists", ws.uuid);
 
-                  servers[submittedServerId].rooms[
+                  servers[submittedServerId].games[submittedGameId].rooms[
                     submittedRoomId
                   ].persistentObjects[newPO.persistentObjectId] = newPO;
 
                   var thisRoom =
-                    servers[submittedServerId].rooms[submittedRoomId];
+                    servers[submittedServerId].games[submittedGameId].rooms[
+                      submittedRoomId
+                    ];
                   //tell everyone in this room that there is a new persistent object
                   for (clientKey in thisRoom.clients) {
                     sendEventToClient(
@@ -1631,20 +1798,31 @@ wss.on("connection", (ws) => {
         var submittedServerId = ws.uuid;
         var submittedPersistentObjectId = realData.POid;
         var submittedPersistentObjectProperties = realData.pOp;
+        var submittedGameId = ws.gameId; // added to retrieve gameId from the websocket
 
         if (
           submittedPersistentObjectProperties &&
           submittedPersistentObjectId &&
-          submittedServerId
+          submittedServerId &&
+          submittedGameId
         ) {
           if (
             typeof submittedPersistentObjectId == "number" &&
             typeof submittedServerId == "string" &&
-            typeof submittedPersistentObjectProperties == "string"
+            typeof submittedPersistentObjectProperties == "string" &&
+            typeof submittedGameId == "string"
           ) {
-            if (submittedServerId in servers) {
-              for (let roomKey in servers[submittedServerId].rooms) {
-                var thisRoom = servers[submittedServerId].rooms[roomKey];
+            if (
+              submittedServerId in servers &&
+              submittedGameId in servers[submittedServerId].games
+            ) {
+              for (let roomKey in servers[submittedServerId].games[
+                submittedGameId
+              ].rooms) {
+                var thisRoom =
+                  servers[submittedServerId].games[submittedGameId].rooms[
+                    roomKey
+                  ];
                 if (thisRoom.persistentObjects[submittedPersistentObjectId]) {
                   thisRoom.persistentObjects[
                     submittedPersistentObjectId
@@ -1672,16 +1850,30 @@ wss.on("connection", (ws) => {
       case "destroy_persistent_object":
         var submittedServerId = ws.uuid;
         var submittedPersistentObjectId = realData.POid;
+        var submittedGameId = ws.gameId; // added to retrieve gameId from the websocket
 
-        if (submittedPersistentObjectId && submittedServerId) {
+        if (
+          submittedPersistentObjectId &&
+          submittedServerId &&
+          submittedGameId
+        ) {
           if (
             typeof submittedPersistentObjectId == "number" &&
-            typeof submittedServerId == "string"
+            typeof submittedServerId == "string" &&
+            typeof submittedGameId == "string"
           ) {
-            if (submittedServerId in servers) {
+            if (
+              submittedServerId in servers &&
+              submittedGameId in servers[submittedServerId].games
+            ) {
               console.log("Got a destroy persistent object request", ws.uuid);
-              for (let roomKey in servers[submittedServerId].rooms) {
-                var thisRoom = servers[submittedServerId].rooms[roomKey];
+              for (let roomKey in servers[submittedServerId].games[
+                submittedGameId
+              ].rooms) {
+                var thisRoom =
+                  servers[submittedServerId].games[submittedGameId].rooms[
+                    roomKey
+                  ];
                 if (thisRoom.persistentObjects[submittedPersistentObjectId]) {
                   delete thisRoom.persistentObjects[
                     submittedPersistentObjectId
@@ -1704,27 +1896,38 @@ wss.on("connection", (ws) => {
         }
 
         break;
-
       case "kick_player":
         //console.log(realData);
         var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
         var submittedVictimClientId = realData.KclientId;
+        var submittedGameId = ws.gameId; // added to retrieve gameId from the websocket
 
-        if (submittedClientId && submittedServerId && submittedVictimClientId) {
+        if (
+          submittedClientId &&
+          submittedServerId &&
+          submittedVictimClientId &&
+          submittedGameId
+        ) {
           if (
             typeof submittedClientId == "number" &&
             typeof submittedVictimClientId == "number" &&
-            typeof submittedServerId == "string"
+            typeof submittedServerId == "string" &&
+            typeof submittedGameId == "string"
           ) {
             //kick the victim
-            if (submittedServerId in servers) {
+            if (
+              submittedServerId in servers &&
+              submittedGameId in servers[submittedServerId].games
+            ) {
               console.log("Got a kick player request");
-              for (let roomKey in servers[submittedServerId].rooms) {
-                for (let clientKey in servers[submittedServerId].rooms[roomKey]
-                  .clients) {
+              for (let roomKey in servers[submittedServerId].games[
+                submittedGameId
+              ].rooms) {
+                for (let clientKey in servers[submittedServerId].games[
+                  submittedGameId
+                ].rooms[roomKey].clients) {
                   //destroy the websocket connection
-
                   if (clientKey == submittedVictimClientId) {
                     console.log(
                       submittedClientId +
@@ -1733,18 +1936,18 @@ wss.on("connection", (ws) => {
                         " out",
                       ws.uuid
                     );
-                    //send the disconencted from server callback
+                    //send the disconnected from server callback
                     sendEventToClient(
                       {
                         eventName: "disconnected",
                       },
-                      servers[submittedServerId].rooms[roomKey].clients[
-                        clientKey
-                      ].socket
+                      servers[submittedServerId].games[submittedGameId].rooms[
+                        roomKey
+                      ].clients[clientKey].socket
                     );
-                    servers[submittedServerId].rooms[roomKey].clients[
-                      submittedVictimClientId
-                    ].socket.close();
+                    servers[submittedServerId].games[submittedGameId].rooms[
+                      roomKey
+                    ].clients[submittedVictimClientId].socket.close();
                   }
                 }
               }
@@ -1756,31 +1959,46 @@ wss.on("connection", (ws) => {
 
       case "view_server_activity":
         var submittedServerId = ws.uuid;
-        if (typeof submittedServerId == "string") {
-          if (submittedServerId in servers) {
+        var submittedGameId = ws.gameId; // added to retrieve gameId from the websocket
+
+        if (
+          typeof submittedServerId == "string" &&
+          typeof submittedGameId == "string"
+        ) {
+          if (
+            submittedServerId in servers &&
+            submittedGameId in servers[submittedServerId].games
+          ) {
             var activity = {
               rooms: {},
             };
-            for (let roomKey in servers[submittedServerId].rooms) {
+            for (let roomKey in servers[submittedServerId].games[
+              submittedGameId
+            ].rooms) {
               activity.rooms[roomKey] = {
                 clients: {},
                 persistentObjects: Object.keys(
-                  servers[submittedServerId].rooms[roomKey].persistentObjects
+                  servers[submittedServerId].games[submittedGameId].rooms[
+                    roomKey
+                  ].persistentObjects
                 ),
               };
 
               //update clients
-              for (let clientKey in servers[submittedServerId].rooms[roomKey]
-                .clients) {
+              for (let clientKey in servers[submittedServerId].games[
+                submittedGameId
+              ].rooms[roomKey].clients) {
                 activity.rooms[roomKey].clients[clientKey] = {
                   entities: Object.keys(
-                    servers[submittedServerId].rooms[roomKey].clients[clientKey]
-                      .entities
+                    servers[submittedServerId].games[submittedGameId].rooms[
+                      roomKey
+                    ].clients[clientKey].entities
                   ),
                   afk:
                     Date.now() -
-                    servers[submittedServerId].rooms[roomKey].clients[clientKey]
-                      .lastPingAt,
+                    servers[submittedServerId].games[submittedGameId].rooms[
+                      roomKey
+                    ].clients[clientKey].lastPingAt,
                 };
               }
             }
@@ -1806,7 +2024,8 @@ wss.on("connection", (ws) => {
         var fieldMap = realData.m;
         const sURL =
           "https://us-central1-rocket-networking.cloudfunctions.net/api/setData";
-
+        console.log("Someone wants to set simple data.", ws.uuid);
+        console.log(realData, ws.uuid);
         axios
           .post(sURL, {
             collectionName: collectionName,
@@ -1830,7 +2049,8 @@ wss.on("connection", (ws) => {
         var readId = realData.readId;
         const rURL =
           "https://us-central1-rocket-networking.cloudfunctions.net/api/readData";
-
+        console.log("Someone wants to read simple data.", ws.uuid);
+        console.log(realData, ws.uuid);
         axios
           .post(rURL, {
             collectionName: collectionName,
@@ -1886,7 +2106,8 @@ wss.on("connection", (ws) => {
         var documentName = realData.d;
         const dURL =
           "https://us-central1-rocket-networking.cloudfunctions.net/api/deleteData";
-
+        console.log("Someone wants to delete simple data.", ws.uuid);
+        console.log(realData, ws.uuid);
         axios
           .post(dURL, {
             collectionName: collectionName,
