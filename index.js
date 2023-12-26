@@ -297,6 +297,7 @@ class Game {
 
   RoomsCleanup() {
     for (let key in this.rooms) {
+      this.rooms[key].clientsCleanup();
       if (
         Object.keys(this.rooms[key].clients).length == 0 &&
         Object.keys(this.rooms[key].persistentObjects).length == 0
