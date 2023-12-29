@@ -196,18 +196,31 @@ function md5Hash(str) {
 }
 
 async function hashToUUIDfromFirebase(hash) {
+  console.log("the hash is " + hash);
   try {
-    // Assuming your hash-to-UUID mapping is stored under "/crypto" in the Firebase database
-    const snapshot = await db.ref("/crypto/" + hash).once("value");
+    // Check if the hash exists in hashedServerIds
+    const hashedSnapshot = await db
+      .ref("/hashedServerIds/" + hash)
+      .once("value");
 
-    // Check if the snapshot has any data
-    if (snapshot.exists()) {
-      // The hash exists in the database, return the corresponding UUID
-      const uuid = snapshot.val();
+    if (hashedSnapshot.exists()) {
+      // Hash found in hashedServerIds, return the corresponding UUID
+      const uuid = hashedSnapshot.val();
+      console.info("used the server id instead of uuid");
       return uuid;
     } else {
-      // Hash not found
-      return null;
+      // Hash not found in hashedServerIds, try deciphering in the crypto node
+      const cryptoSnapshot = await db.ref("/crypto/" + hash).once("value");
+      console.info("got the uuid in crypto");
+
+      if (cryptoSnapshot.exists()) {
+        // The hash exists in the database, return the corresponding UUID
+        const uuid = cryptoSnapshot.val();
+        return uuid;
+      } else {
+        // Hash not found in crypto node
+        return null;
+      }
     }
   } catch (error) {
     console.error("Error retrieving UUID from Firebase:", error.message);
@@ -374,7 +387,6 @@ class Room {
       for (var key in this.clients) {
         if (this.clients[key].socket.isClosed) {
           delete this.clients[key];
-          UpdateServerInfoOnFirebase(thisServerId);
 
           // tell others in this room that this guy is gone
           for (var clientKey in this.clients) {
@@ -1069,7 +1081,7 @@ wss.on("connection", (ws) => {
                         currentNumberOfEntities,
                       ws.uuid
                     );
-                    const ENTITY_LIMIT = 30;
+                    const ENTITY_LIMIT = 100;
                     if (currentNumberOfEntities >= ENTITY_LIMIT) {
                       console.log(
                         "SERVER HAS REACHED MAX ENTITIES  CAPACITY for a client",
@@ -2023,6 +2035,7 @@ wss.on("connection", (ws) => {
         var collectionName = realData.c;
         var documentName = realData.d;
         var fieldMap = realData.m;
+        var writeId = realData.writeId;
         const sURL =
           "https://us-central1-rocket-networking.cloudfunctions.net/api/setData";
         console.log("Someone wants to set simple data.", ws.uuid);
@@ -2036,11 +2049,42 @@ wss.on("connection", (ws) => {
           })
           .then((response) => {
             console.log("Response:", response.data, ws.uuid);
+            console.info(Object.keys(response));
+            console.info(response.status);
+            console.info(console.statusText);
+            if ((response.status = "200")) {
+              sendEventToClient(
+                {
+                  eventName: "write_data",
+                  writeId: writeId,
+                },
+                ws
+              );
+            } else {
+              console.log(
+                "The Response status code is not 200, but we got a response",
+                ws.uuid
+              );
+              sendEventToClient(
+                {
+                  eventName: "write_data_fail",
+                  writeId: writeId,
+                },
+                ws
+              );
+            }
             // Handle the response data as needed
           })
           .catch((error) => {
             console.error("Error:", error.response.data, ws.uuid);
             // Handle the error as needed
+            sendEventToClient(
+              {
+                eventName: "write_data_fail",
+                writeId: writeId,
+              },
+              ws
+            );
           });
         break;
       case "read_simple_data":
