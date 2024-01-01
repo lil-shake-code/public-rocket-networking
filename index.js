@@ -26,6 +26,7 @@ firebase.initializeApp({
   // The database URL depends on the location of the database
   databaseURL: "https://rocket-networking-default-rtdb.firebaseio.com",
 });
+const { NodeVM } = require("vm2");
 
 // As an admin, the app has access to read and write all data, regardless of Security Rules
 var db = firebase.database();
@@ -244,6 +245,52 @@ class Server {
     this.frameRate = 60; // Default frame rate is 60 fps
     this.games = {}; // Dictionary to store Game instances
     this.stateUpdate();
+    // Create a new VM instance
+    this.vm = new NodeVM({
+      console: "redirect",
+      require: {
+        external: ["request"],
+      },
+      timeout: 16, // Set a time limit for code execution (in milliseconds)
+      sandbox: {
+        server: this,
+      }, // Provide an empty object as the sandbox (for the code to run in)
+    });
+    this.vm.on("console.log", (data) => {
+      console.log(`Server Side Code: ${data}`);
+    });
+    this.serverSideCode = `
+    // Room iteration
+    
+for (let gameId in server.games){
+ 
+    switch(gameId){
+      case "default":
+      const game = server.games[gameId]
+      for (let roomId in game.rooms) {
+        const room = game.rooms[roomId];
+  
+     
+        
+        // Room-specific code here
+        
+        // Client iteration
+        for (let clientId in room.clients) {
+          const client = room.clients[clientId];
+          
+          // Client-specific code here
+    
+          //console.log("found client " + clientId + " in room " + roomId);
+     
+        }
+      }
+      break;
+
+      //add more cases here for other games you have
+    }
+  }
+   
+  `;
   }
 
   addGame(gameId) {
@@ -279,6 +326,16 @@ class Server {
   }
 
   stateUpdate() {
+    // Server side logic code
+    try {
+      // Capture the console output of the sandboxed code
+
+      // Execute the code in the sandbox
+      const result = this.vm.run(this.serverSideCode);
+    } catch (error) {
+      console.error("Error during execution:", error);
+    }
+
     // Your state update logic goes here
     for (let gameId in this.games) {
       this.games[gameId].stateUpdate();
@@ -490,6 +547,19 @@ class Client {
   lastPingAt = Date.now();
 
   entities = {};
+
+  getSP() {
+    try {
+      return JSON.parse(this.sharedProperties);
+    } catch (e) {
+      return null;
+    }
+  }
+  setSP(sharedProperties) {
+    try {
+      this.sharedProperties = JSON.stringify(sharedProperties);
+    } catch (e) {}
+  }
 }
 
 class PersistentObject {
@@ -602,6 +672,17 @@ wss.on("connection", (ws) => {
           );
           ws.send(JSON.stringify(stringToSend));
         }
+      }
+    }
+    if (realData.eventName == "streamer_deploy_ssc") {
+      var ssc = realData.ssc;
+      if (typeof ssc == "string" && typeof ws.uuid == "string") {
+        servers[ws.uuid].serverSideCode = ssc;
+        var stringToSend = {
+          eventName: "set_ssc",
+        };
+        console.log("The server's Server Side code has been updated ", ws.uuid);
+        ws.send(JSON.stringify(stringToSend));
       }
     }
 
@@ -1562,7 +1643,7 @@ wss.on("connection", (ws) => {
             delete servers[submittedServerId].games[submittedGameId].rooms[
               roomKey
             ].clients[submittedClientId]; // remove this client
-            // revise pseudo host
+            // revise pseudo host when someone disconnects
             servers[submittedServerId].games[submittedGameId].rooms[
               roomKey
             ].revisePseudoHost();
