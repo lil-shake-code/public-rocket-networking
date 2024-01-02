@@ -558,8 +558,8 @@ class Client {
   roomId = -167; // the room that this belongs to
   clientId = ++clientId;
 
-  sharedProperties = "";
-  sharedPropertiesFromServer = "";
+  sharedProperties = JSON.stringify({});
+  sharedPropertiesFromServer = JSON.stringify({});
   isPseudoHost = false;
   lastPingAt = Date.now();
 
