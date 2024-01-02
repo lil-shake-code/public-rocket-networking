@@ -405,6 +405,13 @@ class Game {
     // Your state update logic goes here
     for (let roomKey in this.rooms) {
       for (let clientKey in this.rooms[roomKey].clients) {
+        var entities = this.rooms[roomKey].clients[clientKey].entities;
+        var serverEntities = {};
+        for (let entityId in entities) {
+          serverEntities[entityId] = entities[entityId].EPSstring;
+        }
+        console.log(serverEntities);
+
         var stringToSend = {
           eventName: "state_update",
           clientId: parseInt(clientKey),
@@ -413,9 +420,8 @@ class Game {
           SP: this.rooms[roomKey].clients[clientKey].sharedProperties,
           SPS: this.rooms[roomKey].clients[clientKey]
             .sharedPropertiesFromServer,
-          entities: JSON.stringify(
-            this.rooms[roomKey].clients[clientKey].entities
-          ),
+          entities: JSON.stringify(entities),
+          entitiesOnServer: JSON.stringify(serverEntities),
         };
 
         if (
@@ -832,10 +838,16 @@ wss.on("connection", (ws) => {
         }
 
         var useCiphering = realData.uC;
+        var version = realData.v;
         if (typeof useCiphering == "boolean") {
           ws.useCiphering = useCiphering;
         } else {
           ws.useCiphering = false;
+        }
+        if (typeof version == "number") {
+          ws.version = version;
+        } else {
+          ws.version = 1;
         }
         // check if this is a real uid/serverid or not
         const hashOfUUID = realData.serverId;
