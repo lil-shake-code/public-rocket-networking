@@ -620,6 +620,22 @@ class PersistentObject {
       );
     }
   }
+
+  destroy() {
+    //remove this object ref from room
+    delete this.roomRef.persistentObjects[this.persistentObjectId];
+
+    //tell everyone in this room that this po is deleted
+    for (var clientKey in this.roomRef.clients) {
+      sendEventToClient(
+        {
+          eventName: "destroy_pO",
+          POid: this.persistentObjectId,
+        },
+        this.roomRef.clients[clientKey].socket
+      );
+    }
+  }
 }
 
 // Function to override console.log
@@ -2009,20 +2025,11 @@ wss.on("connection", (ws) => {
                     roomKey
                   ];
                 if (thisRoom.persistentObjects[submittedPersistentObjectId]) {
-                  delete thisRoom.persistentObjects[
+                  thisRoom.persistentObjects[
                     submittedPersistentObjectId
-                  ];
+                  ].destroy();
+
                   console.log("Destroyed a persistent object", ws.uuid);
-                  //tell everyone in this room that this po is deleted
-                  for (clientKey in thisRoom.clients) {
-                    sendEventToClient(
-                      {
-                        eventName: "destroy_pO",
-                        POid: submittedPersistentObjectId,
-                      },
-                      thisRoom.clients[clientKey].socket
-                    );
-                  }
                 }
               }
             }
