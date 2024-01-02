@@ -411,6 +411,8 @@ class Game {
           roomId: roomKey,
           afk: Date.now() - this.rooms[roomKey].clients[clientKey].lastPingAt,
           SP: this.rooms[roomKey].clients[clientKey].sharedProperties,
+          SPS: this.rooms[roomKey].clients[clientKey]
+            .sharedPropertiesFromServer,
           entities: JSON.stringify(
             this.rooms[roomKey].clients[clientKey].entities
           ),
@@ -425,12 +427,10 @@ class Game {
 
         // send to other players
         for (let otherClientKey in this.rooms[roomKey].clients) {
-          if (otherClientKey != clientKey) {
-            sendEventToClient(
-              stringToSend,
-              this.rooms[roomKey].clients[otherClientKey].socket
-            );
-          }
+          sendEventToClient(
+            stringToSend,
+            this.rooms[roomKey].clients[otherClientKey].socket
+          );
         }
       }
     }
@@ -559,6 +559,7 @@ class Client {
   clientId = ++clientId;
 
   sharedProperties = "";
+  sharedPropertiesFromServer = "";
   isPseudoHost = false;
   lastPingAt = Date.now();
 
@@ -571,10 +572,27 @@ class Client {
       return null;
     }
   }
-  setSP(sharedProperties) {
+  setSP(sharedPropertiesDict) {
     try {
-      this.sharedProperties = JSON.stringify(sharedProperties);
+      this.sharedProperties = JSON.stringify(sharedPropertiesDict);
     } catch (e) {}
+  }
+
+  getSPfromServer() {
+    try {
+      return JSON.parse(this.sharedPropertiesFromServer);
+    } catch (e) {
+      return null;
+    }
+  }
+  setSPfromServer(sharedPropertiesFromServerDict) {
+    try {
+      this.sharedPropertiesFromServer = JSON.stringify(
+        sharedPropertiesFromServerDict
+      );
+    } catch (e) {
+      console.log(e, this.socket);
+    }
   }
 }
 
