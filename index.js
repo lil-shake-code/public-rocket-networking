@@ -229,6 +229,52 @@ async function hashToUUIDfromFirebase(hash) {
   }
 }
 
+const PUREST_SERVER_SIDE_CODE = `
+// Room iteration
+
+for (let gameId in server.games){
+
+switch(gameId){
+  case "default":
+  const game = server.games[gameId]
+  for (let roomId in game.rooms) {
+    const room = game.rooms[roomId];
+
+ 
+    
+    // Room-specific code here
+    
+    // Client iteration
+    for (let clientId in room.clients) {
+      const client = room.clients[clientId];
+      
+      // Client-specific code here
+
+      //
+      for(let entityId in client.entities){
+        try{
+          var EP = JSON.parse(client.entities[entityId])
+          
+        // Entities-specific code here
+          
+        }catch(e){
+          console.log(e)
+        }
+
+      }
+
+      //console.log("found client " + clientId + " in room " + roomId);
+ 
+    }
+  }
+  break;
+
+  //add more cases here for other games you have
+}
+}
+
+`;
+
 //counters
 var clientId = 0;
 var roomId = 0;
@@ -244,7 +290,7 @@ class Server {
     this.maxClients = maxClients;
     this.frameRate = 60; // Default frame rate is 60 fps
     this.games = {}; // Dictionary to store Game instances
-    this.stateUpdate();
+
     // Create a new VM instance
     this.vm = new NodeVM({
       console: "redirect",
@@ -259,38 +305,8 @@ class Server {
     this.vm.on("console.log", (data) => {
       console.log(`Server Side Code: ${data}`);
     });
-    this.serverSideCode = `
-    // Room iteration
-    
-for (let gameId in server.games){
- 
-    switch(gameId){
-      case "default":
-      const game = server.games[gameId]
-      for (let roomId in game.rooms) {
-        const room = game.rooms[roomId];
-  
-     
-        
-        // Room-specific code here
-        
-        // Client iteration
-        for (let clientId in room.clients) {
-          const client = room.clients[clientId];
-          
-          // Client-specific code here
-    
-          //console.log("found client " + clientId + " in room " + roomId);
-     
-        }
-      }
-      break;
-
-      //add more cases here for other games you have
-    }
-  }
-   
-  `;
+    this.serverSideCode = PUREST_SERVER_SIDE_CODE;
+    this.stateUpdate();
   }
 
   addGame(gameId) {
@@ -563,9 +579,27 @@ class Client {
 }
 
 class PersistentObject {
-  constructor(sharedProperties) {
+  constructor(sharedProperties, roomRef) {
     this.persistentObjectId = persistentObjectId++;
     this.sharedProperties = sharedProperties;
+    this.roomRef = roomRef;
+
+    //tell everyone in this room that there is a new persistent object
+    for (var clientKey in this.roomRef.clients) {
+      sendEventToClient(
+        {
+          eventName: "pO_update",
+          POid: this.persistentObjectId,
+          pOp: this.sharedProperties,
+          roomId: this.roomRef.roomId,
+        },
+        this.roomRef.clients[clientKey].socket
+      );
+    }
+  }
+
+  updatePersistentObject(newPropertyDict) {
+    this.sharedProperties = JSON.stringify(newPropertyDict);
   }
 }
 
@@ -812,6 +846,15 @@ wss.on("connection", (ws) => {
             var client = new Client(ws); // create client
             var room = new Room(client.clientId); // make personal room for client
             room.addClient(client); // add client here
+
+            //Update server side code
+
+            try {
+              newServer.serverSideCode =
+                serverInfo.serverSideScripts.code || "";
+            } catch (e) {
+              newServer.serverSideCode = PUREST_SERVER_SIDE_CODE;
+            }
 
             // Check if the server has a specific game, if not, create a new game
             var gameId = realData.gameId || "default";
@@ -1155,13 +1198,7 @@ wss.on("connection", (ws) => {
                         roomKey
                       ].clients[clientKey].entities
                     ).length;
-                    console.log(
-                      "Total entities on client id " +
-                        clientKey +
-                        " before adding this is " +
-                        currentNumberOfEntities,
-                      ws.uuid
-                    );
+
                     const ENTITY_LIMIT = 100;
                     if (currentNumberOfEntities >= ENTITY_LIMIT) {
                       console.log(
@@ -1826,41 +1863,32 @@ wss.on("connection", (ws) => {
               if (allowRoom) {
                 //add user to desired room
                 //room exists already, add the persistent object
-                var newPO = new PersistentObject(
-                  submittedPersistentObjectProperties
-                );
+                var thisRoom = null;
+
                 if (roomAlreadyExists) {
                   console.log("Desired room already exists", ws.uuid);
 
-                  servers[submittedServerId].games[submittedGameId].rooms[
-                    submittedRoomId
-                  ].persistentObjects[newPO.persistentObjectId] = newPO;
-
-                  var thisRoom =
+                  thisRoom =
                     servers[submittedServerId].games[submittedGameId].rooms[
                       submittedRoomId
                     ];
-                  //tell everyone in this room that there is a new persistent object
-                  for (clientKey in thisRoom.clients) {
-                    sendEventToClient(
-                      {
-                        eventName: "pO_update",
-                        POid: newPO.persistentObjectId,
-                        pOp: submittedPersistentObjectProperties,
-                        roomId: submittedRoomId,
-                      },
-                      thisRoom.clients[clientKey].socket
-                    );
-                  }
                 } else {
                   //room does not exist yet
                   console.log("Desired room does not exist yet", ws.uuid);
 
                   var room = new Room(submittedRoomId); //make room with given details
-                  room.persistentObjects[newPO.persistentObjectId] = newPO;
+
                   servers[submittedServerId].addRoom(room); //add room to server
+                  thisRoom = room;
                 }
 
+                //now that rooms are sorted, lets actually create the PO
+                var newPO = new PersistentObject(
+                  submittedPersistentObjectProperties,
+                  thisRoom
+                );
+
+                //tell the creator we made his request
                 sendEventToClient(
                   {
                     eventName: "created_PO",
@@ -1990,6 +2018,7 @@ wss.on("connection", (ws) => {
         }
 
         break;
+
       case "kick_player":
         //console.log(realData);
         var submittedServerId = ws.uuid;
