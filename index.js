@@ -584,6 +584,8 @@ class PersistentObject {
     this.sharedProperties = sharedProperties;
     this.roomRef = roomRef;
 
+    this.roomRef.persistentObjects[this.persistentObjectId] = this;
+
     //tell everyone in this room that there is a new persistent object
     for (var clientKey in this.roomRef.clients) {
       sendEventToClient(
@@ -598,8 +600,25 @@ class PersistentObject {
     }
   }
 
-  updatePersistentObject(newPropertyDict) {
+  getProperties() {
+    try {
+      return JSON.parse(this.sharedProperties);
+    } catch (e) {}
+  }
+  editProperties(newPropertyDict) {
     this.sharedProperties = JSON.stringify(newPropertyDict);
+    //tell everyone in this room that this po is edited
+    for (var clientKey in this.roomRef.clients) {
+      sendEventToClient(
+        {
+          eventName: "pO_update",
+          POid: this.persistentObjectId,
+          pOp: this.sharedProperties,
+          roomId: this.roomRef.roomId,
+        },
+        this.roomRef.clients[clientKey].socket
+      );
+    }
   }
 }
 
@@ -1946,22 +1965,15 @@ wss.on("connection", (ws) => {
                     roomKey
                   ];
                 if (thisRoom.persistentObjects[submittedPersistentObjectId]) {
+                  //edit it
+                  console.info("editing the persistent object");
                   thisRoom.persistentObjects[
                     submittedPersistentObjectId
-                  ].sharedProperties = submittedPersistentObjectProperties;
+                  ].editProperties(
+                    JSON.parse(submittedPersistentObjectProperties)
+                  );
+
                   console.log("Edited a Persistent Object", ws.uuid);
-                  //tell everyone in this room that this po is edited
-                  for (clientKey in thisRoom.clients) {
-                    sendEventToClient(
-                      {
-                        eventName: "pO_update",
-                        POid: submittedPersistentObjectId,
-                        pOp: submittedPersistentObjectProperties,
-                        roomId: roomKey,
-                      },
-                      thisRoom.clients[clientKey].socket
-                    );
-                  }
                 }
               }
             }
