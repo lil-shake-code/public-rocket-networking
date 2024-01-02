@@ -595,7 +595,38 @@ class Client {
     }
   }
 }
+class Entity {
+  constructor(submittedEntityPropertiesString) {
+    this.EPstring = submittedEntityPropertiesString;
+    this.EPSstring = JSON.stringify({});
+  }
 
+  getEP() {
+    try {
+      return JSON.parse(this.EPstring);
+    } catch (e) {
+      return null;
+    }
+  }
+  setEP(entitySharedPropertiesDict) {
+    try {
+      this.EPstring = JSON.stringify(entitySharedPropertiesDict);
+    } catch (e) {}
+  }
+
+  getEPfromServer() {
+    try {
+      return JSON.parse(this.EPSstring);
+    } catch (e) {
+      return null;
+    }
+  }
+  setEPfromServer(entitySharedPropertiesFromServerDict) {
+    try {
+      this.EPSstring = JSON.stringify(entitySharedPropertiesFromServerDict);
+    } catch (e) {}
+  }
+}
 class PersistentObject {
   constructor(sharedProperties, roomRef) {
     this.persistentObjectId = persistentObjectId++;
@@ -1265,10 +1296,23 @@ wss.on("connection", (ws) => {
                       );
                       return;
                     }
-                    servers[submittedServerId].games[submittedGameId].rooms[
-                      roomKey
-                    ].clients[clientKey].entities[submittedEntityId] =
-                      submittedEntityProperties;
+                    //check if this entity exists
+                    if (
+                      servers[submittedServerId].games[submittedGameId].rooms[
+                        roomKey
+                      ].clients[clientKey].entities[submittedEntityId]
+                    ) {
+                      //just update the EPstring
+                      servers[submittedServerId].games[submittedGameId].rooms[
+                        roomKey
+                      ].clients[clientKey].entities[submittedEntityId].EPstring;
+                    } else {
+                      var newEntity = new Entity(submittedEntityProperties);
+                      servers[submittedServerId].games[submittedGameId].rooms[
+                        roomKey
+                      ].clients[clientKey].entities[submittedEntityId] =
+                        newEntity;
+                    }
                   }
                 }
               }
