@@ -407,10 +407,11 @@ class Game {
       for (let clientKey in this.rooms[roomKey].clients) {
         var entities = this.rooms[roomKey].clients[clientKey].entities;
         var serverEntities = {};
+        var oldEntities = {};
         for (let entityId in entities) {
+          oldEntities[entityId] = entities[entityId].EPstring;
           serverEntities[entityId] = entities[entityId].EPSstring;
         }
-        console.log(serverEntities);
 
         var stringToSend = {
           eventName: "state_update",
@@ -420,7 +421,7 @@ class Game {
           SP: this.rooms[roomKey].clients[clientKey].sharedProperties,
           SPS: this.rooms[roomKey].clients[clientKey]
             .sharedPropertiesFromServer,
-          entities: JSON.stringify(entities),
+          entities: JSON.stringify(oldEntities),
           entitiesOnServer: JSON.stringify(serverEntities),
         };
 
@@ -1253,6 +1254,7 @@ wss.on("connection", (ws) => {
         var submittedServerId = ws.uuid;
         var submittedClientId = realData.clientId;
         var submittedEntityProperties = realData.entityP;
+
         var submittedEntityId = realData.entityId;
         var submittedGameId = ws.gameId; // added to retrieve gameId from the websocket
 
@@ -1317,7 +1319,9 @@ wss.on("connection", (ws) => {
                       //just update the EPstring
                       servers[submittedServerId].games[submittedGameId].rooms[
                         roomKey
-                      ].clients[clientKey].entities[submittedEntityId].EPstring;
+                      ].clients[clientKey].entities[
+                        submittedEntityId
+                      ].EPstring = submittedEntityProperties;
                     } else {
                       var newEntity = new Entity(submittedEntityProperties);
                       servers[submittedServerId].games[submittedGameId].rooms[
