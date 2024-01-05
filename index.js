@@ -479,6 +479,7 @@ class Game {
         eventName: eventName,
         messageStruct: messageStruct,
         server: servers[this.serverId],
+        game: this,
       },
     });
     vm.on("console.log", (data) => {
@@ -497,6 +498,29 @@ class Game {
       }
     } catch (error) {
       console.error("Error during execution of handle event to server:", error);
+    }
+  }
+
+  SendEventToClientFromServer(RclientId, eventName, messageStruct) {
+    for (let roomId in this.rooms) {
+      for (let clientId in this.rooms[roomId].clients) {
+        if (RclientId == clientId) {
+          console.log("Sending E from server now...");
+          console.log({
+            eventName: "SEFC",
+            event: eventName,
+            message: JSON.stringify(messageStruct),
+          });
+          sendEventToClient(
+            {
+              eventName: "SEFC",
+              event: eventName,
+              message: JSON.stringify(messageStruct),
+            },
+            this.rooms[roomId].clients[clientId].socket
+          );
+        }
+      }
     }
   }
 }
