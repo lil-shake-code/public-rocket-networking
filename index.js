@@ -466,6 +466,39 @@ class Game {
       }
     }
   }
+
+  handleEventToServer(senderClientId, eventName, messageStruct) {
+    const vm = new NodeVM({
+      timeout: 1000, // Set a time limit for code execution (in milliseconds)
+      console: "redirect",
+      require: {
+        external: ["request"],
+      },
+      sandbox: {
+        senderClientId: senderClientId,
+        eventName: eventName,
+        messageStruct: messageStruct,
+        server: servers[this.serverId],
+      },
+    });
+    vm.on("console.log", (data) => {
+      console.log(`Server Side Code: ${data}`);
+    });
+
+    // Server side logic code
+    try {
+      // Capture the console output of the sandboxed code
+
+      const client_sent_event_code =
+        this.serverSideCode.client_sent_event.deployedCode;
+
+      if (client_sent_event_code) {
+        const result = vm.run(client_sent_event_code);
+      }
+    } catch (error) {
+      console.error("Error during execution of handle event to server:", error);
+    }
+  }
 }
 
 class Room {
@@ -1539,6 +1572,65 @@ wss.on("connection", (ws) => {
                     }
                   }
                 }
+              }
+            } else {
+              // invalid uid
+              console.log(
+                "submitted server id is" + submittedServerId,
+                ws.uuid
+              );
+              console.log(
+                "INVALID USER ID in state update or not yet created this customer's server on node",
+                ws.uuid
+              );
+              sendAlertToClient(
+                ws,
+                "unshow",
+                "Invalid Server ID. Please make sure this is your Server ID shown on the website3.5 "
+              );
+            }
+          }
+        }
+
+        break;
+      // SETS event
+      case "SETS":
+        var submittedServerId = ws.uuid;
+        var submittedClientId = realData.clientId;
+
+        var submittedMessage = realData.message;
+        var submittedEvent = realData.event;
+        var submittedGameId = ws.gameId; // added to retrieve gameId from the websocket
+
+        if (
+          submittedClientId &&
+          submittedServerId &&
+          submittedMessage &&
+          submittedEvent &&
+          submittedGameId
+        ) {
+          if (
+            typeof submittedClientId == "number" &&
+            typeof submittedServerId == "string" &&
+            typeof submittedMessage == "string" &&
+            typeof submittedEvent == "string" &&
+            typeof submittedGameId == "string" // added validation for gameId
+          ) {
+            // fully validated
+            console.log("Got a Send Event request", ws.uuid);
+            console.log(realData, ws.uuid);
+
+            if (
+              submittedServerId in servers &&
+              submittedGameId in servers[submittedServerId].games
+            ) {
+              try {
+                var a = JSON.parse(submittedMessage);
+                servers[submittedServerId].games[
+                  submittedGameId
+                ].handleEventToServer(submittedClientId, submittedEvent, a);
+              } catch (e) {
+                console.log(e);
               }
             } else {
               // invalid uid
