@@ -291,26 +291,11 @@ class Server {
     this.frameRate = 60; // Default frame rate is 60 fps
     this.games = {}; // Dictionary to store Game instances
 
-    // Create a new VM instance
-    this.vm = new NodeVM({
-      console: "redirect",
-      require: {
-        external: ["request"],
-      },
-      timeout: 16, // Set a time limit for code execution (in milliseconds)
-      sandbox: {
-        server: this,
-      }, // Provide an empty object as the sandbox (for the code to run in)
-    });
-    this.vm.on("console.log", (data) => {
-      console.log(`Server Side Code: ${data}`);
-    });
-    this.serverSideCode = PUREST_SERVER_SIDE_CODE;
     this.stateUpdate();
   }
 
   addGame(gameId) {
-    const game = new Game(gameId);
+    const game = new Game(gameId, this.serverId);
     this.games[gameId] = game;
   }
 
@@ -342,16 +327,6 @@ class Server {
   }
 
   stateUpdate() {
-    // Server side logic code
-    try {
-      // Capture the console output of the sandboxed code
-
-      // Execute the code in the sandbox
-      const result = this.vm.run(this.serverSideCode);
-    } catch (error) {
-      console.error("Error during execution:", error);
-    }
-
     // Your state update logic goes here
     for (let gameId in this.games) {
       this.games[gameId].stateUpdate();
@@ -363,9 +338,47 @@ class Server {
 }
 
 class Game {
-  constructor(gameId) {
+  constructor(gameId, serverId) {
     this.gameId = gameId;
+    this.serverId = serverId;
     this.rooms = {};
+    // Create a new VM instance
+    this.vm = new NodeVM({
+      console: "redirect",
+      require: {
+        external: ["request"],
+      },
+      timeout: 16, // Set a time limit for code execution (in milliseconds)
+      sandbox: {
+        server: this,
+      }, // Provide an empty object as the sandbox (for the code to run in)
+    });
+    this.vm.on("console.log", (data) => {
+      console.log(`Server Side Code: ${data}`);
+    });
+    this.serverSideCode = {
+      step: "",
+    };
+    //get the server side code from firebase rtdb/users/serverId/serverSideScripting/gameId
+
+    const SSCref = db.ref(
+      "users/" + serverId + "/serverSideScripts/" + this.gameId
+    );
+
+    // Attach an asynchronous callback to read the data at our posts reference
+    SSCref.once(
+      "value",
+      (snapshot) => {
+        if (snapshot.exists()) {
+          this.serverSideCode = snapshot.val();
+          console.log(this.serverSideCode);
+        } else {
+        }
+      },
+      (errorObject) => {
+        console.info("Getting server side script failed! " + errorObject.name);
+      }
+    );
   }
 
   addRoom(room) {
@@ -402,6 +415,17 @@ class Game {
   }
 
   stateUpdate() {
+    // Server side logic code
+    try {
+      // Capture the console output of the sandboxed code
+
+      const stepCode = this.serverSideCode.step.deployedCode;
+      if (stepCode) {
+        const result = this.vm.run(stepCode);
+      }
+    } catch (error) {
+      console.error("Error during execution of server step:", error);
+    }
     // Your state update logic goes here
     for (let roomKey in this.rooms) {
       for (let clientKey in this.rooms[roomKey].clients) {
