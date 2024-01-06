@@ -419,7 +419,7 @@ class Game {
     try {
       // Capture the console output of the sandboxed code
 
-      const stepCode = this.serverSideCode.step.savedCode;
+      const stepCode = this.serverSideCode.step.deployedCode;
       if (stepCode) {
         const result = this.vm.run(stepCode);
       }
@@ -491,7 +491,7 @@ class Game {
       // Capture the console output of the sandboxed code
 
       const client_sent_event_code =
-        this.serverSideCode.client_sent_event.savedCode;
+        this.serverSideCode.client_sent_event.deployedCode;
 
       if (client_sent_event_code) {
         const result = vm.run(client_sent_event_code);
@@ -881,14 +881,32 @@ wss.on("connection", (ws) => {
       }
     }
     if (realData.eventName == "streamer_deploy_ssc") {
-      var ssc = realData.ssc;
-      if (typeof ssc == "string" && typeof ws.uuid == "string") {
-        servers[ws.uuid].serverSideCode = ssc;
-        var stringToSend = {
-          eventName: "set_ssc",
-        };
-        console.log("The server's Server Side code has been updated ", ws.uuid);
-        ws.send(JSON.stringify(stringToSend));
+      console.log(realData);
+      const gameName = realData.game;
+      const scriptName = realData.script;
+
+      if (
+        typeof realData.ssc == "string" &&
+        typeof ws.uuid == "string" &&
+        typeof gameName == "string" &&
+        typeof scriptName == "string"
+      ) {
+        try {
+          servers[ws.uuid].games[gameName].serverSideCode[
+            scriptName
+          ].deployedCode = realData.ssc;
+          var stringToSend = {
+            eventName: "set_ssc",
+          };
+          console.log(
+            "The server's Server Side code has been updated ",
+            ws.uuid
+          );
+          console.log(servers[ws.uuid].games[gameName].serverSideCode);
+          ws.send(JSON.stringify(stringToSend));
+        } catch (e) {
+          console.log(e);
+        }
       }
     }
 
