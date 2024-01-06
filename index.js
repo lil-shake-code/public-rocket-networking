@@ -374,11 +374,45 @@ class Game {
           console.log(this.serverSideCode);
         } else {
         }
+
+        this.handleCreateGameServer();
       },
       (errorObject) => {
         console.info("Getting server side script failed! " + errorObject.name);
       }
     );
+  }
+
+  handleCreateGameServer() {
+    const vm = new NodeVM({
+      timeout: 1000, // Set a time limit for code execution (in milliseconds)
+      console: "redirect",
+      require: {
+        external: ["request"],
+      },
+      sandbox: {
+        messageStruct: messageStruct,
+        server: servers[this.serverId],
+        game: this,
+      },
+    });
+    vm.on("console.log", (data) => {
+      console.log(`Server Side Code: ${data}`);
+    });
+
+    // Server side logic code
+    try {
+      // Capture the console output of the sandboxed code
+
+      const game_server_created_code =
+        this.serverSideCode.game_server_created.deployedCode;
+
+      if (game_server_created_code) {
+        const result = vm.run(game_server_created_code);
+      }
+    } catch (error) {
+      console.error("Error during execution of game_server_created:", error);
+    }
   }
 
   addRoom(room) {
