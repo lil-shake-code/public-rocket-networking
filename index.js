@@ -1304,6 +1304,13 @@ wss.on("connection", (ws) => {
                   ) {
                     // we have found this client.
                     // just update the sharedproperties
+                    if (
+                      servers[submittedServerId].games[submittedGameId].rooms[
+                        roomKey
+                      ].clients[clientKey].sharedProperties.length < 3
+                    ) {
+                      console.info(realData);
+                    }
                     servers[submittedServerId].games[submittedGameId].rooms[
                       roomKey
                     ].clients[clientKey].sharedProperties =
