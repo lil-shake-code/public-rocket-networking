@@ -350,7 +350,7 @@ class Game {
       },
       timeout: 16, // Set a time limit for code execution (in milliseconds)
       sandbox: {
-        server: this,
+        game: this,
       }, // Provide an empty object as the sandbox (for the code to run in)
     });
     this.vm.on("console.log", (data) => {
@@ -419,7 +419,7 @@ class Game {
     try {
       // Capture the console output of the sandboxed code
 
-      const stepCode = this.serverSideCode.step.deployedCode;
+      const stepCode = this.serverSideCode.step.savedCode;
       if (stepCode) {
         const result = this.vm.run(stepCode);
       }
@@ -491,7 +491,7 @@ class Game {
       // Capture the console output of the sandboxed code
 
       const client_sent_event_code =
-        this.serverSideCode.client_sent_event.deployedCode;
+        this.serverSideCode.client_sent_event.savedCode;
 
       if (client_sent_event_code) {
         const result = vm.run(client_sent_event_code);
@@ -2434,6 +2434,70 @@ wss.on("connection", (ws) => {
             );
           });
         break;
+      case "add_to_simple_data":
+        var submittedServerId = ws.uuid;
+        var collectionName = realData.c;
+        var documentName = realData.d;
+        var fieldMap = realData.m;
+        var patchId = realData.patchId;
+        const aURL =
+          "https://us-central1-rocket-networking.cloudfunctions.net/api/database/" +
+          collectionName +
+          "/" +
+          documentName;
+        console.log("Someone wants to add to simple data.", ws.uuid);
+
+        const headers2 = {
+          Authorization: ws.uuid,
+        };
+        axios
+          .patch(
+            aURL,
+            JSON.parse(fieldMap),
+
+            { headers: headers2 } // Pass headers in the correct format
+          )
+          .then((response) => {
+            console.log("Response:", response.data, ws.uuid);
+            console.info(Object.keys(response));
+            console.info(response.status);
+            console.info(console.statusText);
+            if (response.status === 200) {
+              sendEventToClient(
+                {
+                  eventName: "patch_data",
+                  patchId: patchId,
+                },
+                ws
+              );
+            } else {
+              console.log(
+                "The Response status code is not 200, but we got a response",
+                ws.uuid
+              );
+              sendEventToClient(
+                {
+                  eventName: "patch_data_fail",
+                  patchId: patchId,
+                },
+                ws
+              );
+            }
+            // Handle the response data as needed
+          })
+          .catch((error) => {
+            console.error("Error:", error.response.data, ws.uuid);
+            // Handle the error as needed
+            sendEventToClient(
+              {
+                eventName: "patch_data_fail",
+                patchId: patchId,
+              },
+              ws
+            );
+          });
+        break;
+
       case "read_simple_data":
         var submittedServerId = ws.uuid;
         var collectionName = realData.c;
